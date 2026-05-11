@@ -35,7 +35,8 @@
       "Bash(python -)",
       "Bash(fuser -k 5000/tcp)",
       "Bash(PYTHONUNBUFFERED=1 python -u app.py)",
-      "Bash(tee backend.log)"
+      "Bash(tee backend.log)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\style\\\\OneDrive\\\\Desktop\\\\nhl_player_salary_website\" | ForEach-Object { $_.Name })"
     ]
   }
 }
