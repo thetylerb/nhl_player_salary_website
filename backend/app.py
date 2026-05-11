@@ -13,26 +13,27 @@ from database.db import (
     init_db, upsert_salary, upsert_stats,
     get_salary, get_stats, get_salary_count, get_stats_count,
     ensure_player_index_table, upsert_player_index,
+    clear_player_index, seed_cap_ceilings,
 )
 from database.seed_data import get_seed_players
-from services.nhl_api import search_players, get_player_info, build_player_index_background
+from services.nhl_api import search_players, get_player_info, build_player_index_background, force_rebuild_player_index
 from services.comparables import find_comparables
 from services.regression import predict_salary, invalidate_models
-from services.salary_scraper import run_daily_scrape
+from services.salary_scraper import run_daily_scrape, run_weekly_salary_scrape
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app, origins=[FRONTEND_URL, "http://localhost:3000", "http://localhost:5173"])
+CORS(app, origins=[FRONTEND_URL, "http://localhost:3000", "http://localhost:3001", "http://localhost:5173"])
 
 
 # ─── Startup ─────────────────────────────────────────────────────────────────
 
 def seed_database():
-    """Load seed data if database is empty."""
+    """Load seed salaries if the salary table is empty. Never seeds stats — MoneyPuck is authoritative."""
     if get_salary_count() == 0:
-        logger.info("Seeding database with static player data...")
+        logger.info("Seeding database with static salary data...")
         players = get_seed_players()
         for p in players:
             upsert_salary(
@@ -47,40 +48,29 @@ def seed_database():
                 fa_type=p.get("fa_type", "UFA"),
                 source="seed",
             )
-            upsert_stats(
-                player_id=p["player_id"],
-                season=CURRENT_SEASON,
-                position=p["position"],
-                stats_dict=p["stats"],
-            )
-        logger.info(f"Seeded {len(players)} players")
-    else:
-        # Ensure stats_cache is populated too (may have salary but not stats after restart)
-        if get_stats_count(CURRENT_SEASON) == 0:
-            players = get_seed_players()
-            for p in players:
-                upsert_stats(p["player_id"], CURRENT_SEASON, p["position"], p["stats"])
+        logger.info(f"Seeded {len(players)} player salaries")
 
 
 init_db()
+seed_cap_ceilings()
 ensure_player_index_table()
 seed_database()
 
-# Seed the player search index from seed data immediately (fast)
-for _p in get_seed_players():
-    upsert_player_index(_p["player_id"], _p["name"], _p["team"], _p["position"])
+# Clear the player index and rebuild from real NHL roster IDs.
+# Seed IDs do not match real NHL API IDs and cause salary/stats JOIN failures.
+clear_player_index()
 
-# Then build the full index from NHL rosters in a background thread
 import threading
-threading.Thread(target=build_player_index_background, daemon=True).start()
+threading.Thread(target=force_rebuild_player_index, daemon=True).start()
 
 # Start background scheduler for daily scrape
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler(daemon=True)
-    scheduler.add_job(run_daily_scrape, "interval", hours=24, id="daily_scrape")
+    scheduler.add_job(run_daily_scrape, "interval", hours=24, id="daily_stats_scrape")
+    scheduler.add_job(run_weekly_salary_scrape, "interval", weeks=1, id="weekly_salary_scrape")
     scheduler.start()
-    logger.info("APScheduler started — daily scrape every 24h")
+    logger.info("APScheduler started — stats every 24h, salaries every 7d")
 except ImportError:
     logger.warning("APScheduler not installed; scheduled scraping disabled")
 
@@ -113,18 +103,32 @@ def player_detail(player_id):
     if not info:
         return jsonify({"error": "Player not found"}), 404
 
-    # Merge with MoneyPuck advanced stats if available
+    # MoneyPuck is the authoritative source for all rate and advanced stats.
+    # Override every key it provides (NHL API can return 0 for TOI/rate stats
+    # when featuredStats is missing or the season hasn't been processed yet).
     cached = get_stats(player_id, CURRENT_SEASON)
-    if cached and info.get("stats"):
+    if cached:
         mp_stats = cached.get("stats", {})
-        for key in ["corsi_for_pct", "xgf_pct", "penalty_diff_per_60", "quality_start_pct"]:
-            if mp_stats.get(key) is not None:
-                info["stats"][key] = mp_stats[key]
+        if mp_stats:
+            if info.get("stats") is None:
+                info["stats"] = {}
+            for key, val in mp_stats.items():
+                if val is not None:
+                    info["stats"][key] = val
 
     # Attach salary
     salary = get_salary(player_id)
     info["salary"] = salary
     info["nhl_id"] = player_id
+
+    logger.debug(
+        "player_detail %s stats: toi_per_game=%s points_per_60=%s goals_per_60=%s gp=%s",
+        player_id,
+        info["stats"].get("toi_per_game") if info.get("stats") else None,
+        info["stats"].get("points_per_60") if info.get("stats") else None,
+        info["stats"].get("goals_per_60") if info.get("stats") else None,
+        info["stats"].get("games_played") if info.get("stats") else None,
+    )
 
     return jsonify(info)
 
@@ -152,45 +156,52 @@ def estimate():
     if not player_id:
         return jsonify({"error": "player_id required"}), 400
 
-    # Get player info
+    # Get player info (metadata: name, team, position, age, headshot)
     info = get_player_info(player_id)
     if not info:
         return jsonify({"error": "Player not found via NHL API"}), 404
 
-    # Merge advanced stats from cache
+    # MoneyPuck is the authoritative source for ALL rate and advanced stats.
+    # Fetch from DB and override every key so comparables/regression always
+    # operate on DB values, never on potentially-zero NHL API values.
     cached = get_stats(player_id, CURRENT_SEASON)
-    if cached and info.get("stats"):
+    if cached:
         mp_stats = cached.get("stats", {})
-        for key in ["corsi_for_pct", "xgf_pct", "penalty_diff_per_60", "quality_start_pct"]:
-            if mp_stats.get(key) is not None:
-                info["stats"][key] = mp_stats[key]
+        if mp_stats:
+            if info.get("stats") is None:
+                info["stats"] = {}
+            for key, val in mp_stats.items():
+                if val is not None:
+                    info["stats"][key] = val
 
-    # Fallback for missing advanced stats: use seed data if available
+    # Age/experience seed fallback (only for metadata, not stats)
     seed_entry = next(
         (p for p in get_seed_players() if p["player_id"] == player_id), None
     )
-    if seed_entry and info.get("stats"):
-        for key in ["corsi_for_pct", "xgf_pct", "penalty_diff_per_60", "quality_start_pct"]:
-            if info["stats"].get(key) is None and seed_entry["stats"].get(key) is not None:
-                info["stats"][key] = seed_entry["stats"][key]
-        # Use seed stats for rate stats too if NHL API returned zeros
-        if info["stats"].get("goals_per_60", 0) == 0 and seed_entry["stats"].get("goals_per_60"):
-            for k in ["goals_per_60", "assists_per_60", "points_per_60", "toi_per_game"]:
-                info["stats"][k] = seed_entry["stats"].get(k, info["stats"].get(k, 0))
+    if seed_entry:
         if info.get("age", 0) == 0:
             info["age"] = seed_entry.get("age", 0)
         if info.get("experience", 0) == 0:
             info["experience"] = seed_entry.get("experience", 0)
 
-    # Build player_stats for model input
+    # Resolve FA type: explicit override > salary record > seed > default UFA
+    current_salary = get_salary(player_id)
+    if fa_status != "auto":
+        resolved_fa = fa_status
+    elif current_salary and current_salary.get("fa_type"):
+        resolved_fa = current_salary["fa_type"]
+    elif seed_entry and seed_entry.get("fa_type"):
+        resolved_fa = seed_entry["fa_type"]
+    else:
+        resolved_fa = "UFA"
+
+    # Build player_stats — stats come from DB (authoritative); NHL API as fallback
     player_stats = {
         "nhl_id": player_id,
         "position": info.get("position", "C"),
         "age": info.get("age", 25),
         "experience": info.get("experience", 5),
-        "fa_type": fa_status if fa_status != "auto" else (
-            seed_entry.get("fa_type", "UFA") if seed_entry else "UFA"
-        ),
+        "fa_type": resolved_fa,
         "stats": info.get("stats", {}),
     }
 
@@ -206,7 +217,6 @@ def estimate():
     reg_result = predict_salary(player_stats)
 
     # Salary verdict
-    current_salary = get_salary(player_id)
     verdict = None
     if current_salary and current_salary.get("aav") and comp_result.get("estimate"):
         current_aav = current_salary["aav"]
@@ -238,7 +248,11 @@ def estimate():
             "fa_type": player_stats["fa_type"],
         },
         "current_salary": current_salary,
-        "comparables_estimate": comp_result,
+        "comparables_estimate": {
+            **comp_result,
+            "rmse_dollars": reg_result.get("rmse_dollars"),
+            "position_group": reg_result.get("position_group"),
+        },
         "regression_estimate": reg_result,
         "verdict": verdict,
         "comparables": comp_result.get("comparables", []),
@@ -247,10 +261,10 @@ def estimate():
 
 @app.route("/api/admin/scrape", methods=["POST"])
 def trigger_scrape():
-    """Manually trigger the daily data scrape."""
-    count = run_daily_scrape()
-    invalidate_models()
-    return jsonify({"status": "ok", "rows_updated": count})
+    """Manually trigger both the stats and salary scrapes."""
+    stats = run_daily_scrape()
+    salaries = run_weekly_salary_scrape()
+    return jsonify({"status": "ok", "stats_rows": stats, "salary_rows": salaries})
 
 
 @app.route("/api/admin/db-stats")
