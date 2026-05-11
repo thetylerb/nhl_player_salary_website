@@ -1,0 +1,112 @@
+.comparables-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.comparables-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.comparables-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.comp-count {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: rgba(255,255,255,0.05);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.table-wrap { overflow-x: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+thead th:hover { color: var(--text-primary); }
+
+thead th.sorted { color: var(--accent); }
+
+thead th .sort-arrow {
+  margin-left: 4px;
+  font-size: 10px;
+}
+
+tbody tr {
+  border-bottom: 1px solid rgba(42, 58, 85, 0.4);
+  transition: background 0.12s;
+}
+
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+
+tbody td {
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.td-name { font-weight: 600; }
+.td-team { color: var(--text-secondary); font-size: 12px; }
+.td-pos {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+.td-salary {
+  font-weight: 700;
+  color: var(--accent);
+}
+.td-sim { color: var(--text-secondary); }
+
+.sim-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sim-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  min-width: 4px;
+  transition: width 0.3s;
+}
+
+.empty-comparables {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}

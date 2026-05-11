@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(pip install *)",
+      "Bash(npm install *)",
+      "Bash(set \"REACT_APP_API_URL=http://localhost:5000\")",
+      "Bash(npm run *)",
+      "Bash(Start-Process -NoNewWindow python -ArgumentList \"app.py\")",
+      "Bash(Start-Sleep -Seconds 3)",
+      "Bash(Invoke-RestMethod -Uri \"http://localhost:5000/api/health\")",
+      "Bash(ConvertTo-Json)",
+      "Bash(python app.py)",
+      "Bash(curl -s http://localhost:5000/api/health)",
+      "Bash(curl -s http://localhost:5000/api/admin/db-stats)",
+      "Bash(kill %1)",
+      "Bash(echo \"Backend PID: $!\")",
+      "Bash(BROWSER=none npm start)",
+      "Bash(echo \"Frontend PID: $!\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(curl -s \"http://localhost:5000/api/players/search?q=mcdavid\")",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" \"https://suggest.svc.nhl.com/svc/suggest/v1/minplayers/mcdavid/5\")",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" \"https://api-web.nhle.com/v1/player-search?q=mcdavid&culture=en-us&limit=5\")",
+      "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\" \"https://api-web.nhle.com/v1/player/8478483/landing\")",
+      "Bash(curl -sv \"https://api-web.nhle.com/v1/player/8478483/landing\")",
+      "Bash(curl -s \"https://api.nhle.com/stats/rest/en/skater/summary?isAggregate=false&isGame=false&limit=5&start=0&factCayenneExp=gamesPlayed%3E=1&cayenneExp=gameTypeId=2+and+seasonId=20232024\" -w \"\\\\nHTTP:%{http_code}\")",
+      "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\" \"https://api-web.nhle.com/v1/roster/EDM/20242025\")",
+      "Bash(curl -sv \"https://api-web.nhle.com/v1/roster/EDM/20242025\")",
+      "Bash(curl -s \"https://api-web.nhle.com/v1/roster/EDM/20242025\")",
+      "Bash(pkill -f \"python app.py\")",
+      "Bash(curl -s \"http://localhost:5000/api/players/search?q=point\")",
+      "Bash(curl -sv \"http://localhost:5000/api/players/search?q=mcdavid\")",
+      "Bash(curl *)",
+      "Bash(python -)",
+      "Bash(fuser -k 5000/tcp)",
+      "Bash(PYTHONUNBUFFERED=1 python -u app.py)",
+      "Bash(tee backend.log)"
+    ]
+  }
+}

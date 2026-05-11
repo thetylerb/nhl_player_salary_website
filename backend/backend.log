@@ -1,0 +1,20 @@
+INFO:services.nhl_api:Player index already populated, skipping roster fetch
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Added job "run_daily_scrape" to job store "default"
+INFO:apscheduler.scheduler:Scheduler started
+INFO:__main__:APScheduler started — daily scrape every 24h
+ * Serving Flask app 'app'
+ * Debug mode: off
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.1.251:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [11/May/2026 12:48:40] "GET /api/health HTTP/1.1" 200 -
+INFO:__main__:Search 'mcdavid' \u2192 1 results
+INFO:werkzeug:127.0.0.1 - - [11/May/2026 12:48:41] "GET /api/players/search?q=mcdavid HTTP/1.1" 200 -
+INFO:__main__:Search 'makar' \u2192 1 results
+INFO:werkzeug:127.0.0.1 - - [11/May/2026 12:48:41] "GET /api/players/search?q=makar HTTP/1.1" 200 -
+INFO:services.regression:Trained F model on 44 samples
+INFO:werkzeug:127.0.0.1 - - [11/May/2026 12:49:05] "POST /api/estimate HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [11/May/2026 12:49:26] "HEAD /api/health HTTP/1.1" 200 -

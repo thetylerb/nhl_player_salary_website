@@ -1,0 +1,194 @@
+.App {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────────── */
+.App-header {
+  background: linear-gradient(135deg, #0d1526 0%, #111827 60%, #0f1c35 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 24px 0 20px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.App-header::before {
+  content: '';
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 600px;
+  height: 200px;
+  background: radial-gradient(ellipse, rgba(0, 212, 255, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.header-content {
+  position: relative;
+  z-index: 1;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.logo-icon { font-size: 28px; }
+
+.logo h1 {
+  font-size: 26px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #ffffff 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.5px;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ─── Main layout ─────────────────────────────────────────────────────────── */
+.App-main {
+  flex: 1;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  width: 100%;
+}
+
+.search-section { margin-bottom: 28px; }
+
+/* ─── Loading ─────────────────────────────────────────────────────────────── */
+.loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 60px 0;
+  color: var(--text-secondary);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Error ───────────────────────────────────────────────────────────────── */
+.error-banner {
+  background: var(--red-dim);
+  border: 1px solid var(--red);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  color: var(--red);
+  margin-bottom: 16px;
+  font-weight: 500;
+}
+
+/* ─── Results grid ────────────────────────────────────────────────────────── */
+.results-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.results-top { width: 100%; }
+
+.results-body {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  align-items: start;
+}
+
+.estimates-column { display: flex; flex-direction: column; gap: 20px; }
+.controls-column { display: flex; flex-direction: column; gap: 20px; }
+.comparables-section { width: 100%; }
+
+/* ─── Hero placeholder ────────────────────────────────────────────────────── */
+.hero-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 80px 20px;
+  gap: 16px;
+}
+
+.hero-icon { font-size: 64px; filter: grayscale(0.3); }
+
+.hero-placeholder h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.hero-placeholder p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  max-width: 480px;
+}
+
+.hero-features {
+  display: flex;
+  gap: 24px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.feature {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.feature-icon { font-size: 16px; }
+
+/* ─── Footer ─────────────────────────────────────────────────────────────── */
+.App-footer {
+  text-align: center;
+  padding: 16px;
+  color: var(--text-dim);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .results-body {
+    grid-template-columns: 1fr;
+  }
+  .controls-column {
+    order: -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .logo h1 { font-size: 20px; }
+  .App-main { padding: 16px 12px; }
+  .hero-placeholder { padding: 48px 16px; }
+  .hero-placeholder h2 { font-size: 18px; }
+}
