@@ -29,9 +29,7 @@ const GOALIE_WEIGHTS = {
   games_started: 0.4,
 };
 
-export default function App() {
-  if (window.location.hash === '#admin') return <AdminPage />;
-
+function MainApp() {
   const [estimate, setEstimate] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -174,4 +172,9 @@ export default function App() {
       </footer>
     </div>
   );
+}
+
+export default function App() {
+  if (window.location.hash === '#admin') return <AdminPage />;
+  return <MainApp />;
 }
