@@ -475,7 +475,15 @@ def _match_player_id(name, team=None):
     if candidates:
         if team:
             same_team = [e for e in candidates if e.get("team") == team]
-            return (same_team or candidates)[0]["nhl_id"]
+            if same_team:
+                return same_team[0]["nhl_id"]
+            # Only fall back to a cross-team match when there is exactly one
+            # candidate — this handles traded players whose team has changed.
+            # With multiple candidates, a cross-team match risks assigning one
+            # player's salary to a different player with the same name.
+            if len(candidates) == 1:
+                return candidates[0]["nhl_id"]
+            return None
         return candidates[0]["nhl_id"]
 
     # Pass 2: same last name + same first initial
@@ -490,7 +498,11 @@ def _match_player_id(name, team=None):
         if candidates:
             if team:
                 same_team = [e for e in candidates if e.get("team") == team]
-                return (same_team or candidates)[0]["nhl_id"]
+                if same_team:
+                    return same_team[0]["nhl_id"]
+                if len(candidates) == 1:
+                    return candidates[0]["nhl_id"]
+                return None
             return candidates[0]["nhl_id"]
 
     return None
