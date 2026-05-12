@@ -10,12 +10,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import PORT, FRONTEND_URL, CURRENT_SEASON
 from database.db import (
-    init_db, upsert_salary, upsert_stats,
+    init_db, upsert_stats,
     get_salary, get_stats, get_salary_count, get_stats_count,
-    ensure_player_index_table, upsert_player_index,
+    ensure_player_index_table,
     clear_player_index, seed_cap_ceilings, purge_seed_salaries,
 )
-from database.seed_data import get_seed_players
 from services.nhl_api import search_players, get_player_info, build_player_index_background, force_rebuild_player_index
 from services.comparables import find_comparables
 from services.regression import predict_salary, invalidate_models
@@ -37,39 +36,36 @@ CORS(app, origins=[
 
 # ─── Startup ─────────────────────────────────────────────────────────────────
 
-def seed_database():
-    """Load seed salaries if the salary table is empty. Never seeds stats — MoneyPuck is authoritative."""
-    if get_salary_count() == 0:
-        logger.info("Seeding database with static salary data...")
-        players = get_seed_players()
-        for p in players:
-            upsert_salary(
-                player_id=p["player_id"],
-                name=p["name"],
-                team=p["team"],
-                position=p["position"],
-                aav=p["aav"],
-                total_value=p["aav"] * p.get("contract_years", 1),
-                contract_years=p.get("contract_years"),
-                expiry_season=p.get("expiry_season"),
-                fa_type=p.get("fa_type", "UFA"),
-                source="seed",
-            )
-        logger.info(f"Seeded {len(players)} player salaries")
-
-
 init_db()
 seed_cap_ceilings()
 ensure_player_index_table()
 purge_seed_salaries()
-seed_database()
 
-# Clear the player index and rebuild from real NHL roster IDs.
-# Seed IDs do not match real NHL API IDs and cause salary/stats JOIN failures.
+# Clear the player index and rebuild from real NHL roster IDs, then
+# auto-import the bundled CSV so salary data is always fresh on deploy.
 clear_player_index()
 
 import threading
-threading.Thread(target=force_rebuild_player_index, daemon=True).start()
+
+_CSV_PATH = os.path.join(os.path.dirname(__file__), "data", "nhl_contracts.csv")
+
+def _startup_sequence():
+    """Build player index first, then import CSV so name→ID matching works."""
+    force_rebuild_player_index()
+    if os.path.exists(_CSV_PATH):
+        try:
+            result = import_contracts_from_file(_CSV_PATH)
+            logger.info(
+                f"CSV auto-import: {result['matched']} matched, "
+                f"{result['unmatched']} unmatched, {result['skipped']} skipped"
+            )
+            invalidate_models()
+        except Exception as e:
+            logger.error(f"CSV auto-import failed: {e}")
+    else:
+        logger.warning(f"Bundled CSV not found at {_CSV_PATH}")
+
+threading.Thread(target=_startup_sequence, daemon=True).start()
 
 # Start background scheduler for daily scrape
 try:
@@ -300,6 +296,7 @@ def missing_data():
     from database.db import get_db
     conn = get_db()
 
+    # Players with stats this season but no salary record at all
     stats_no_salary = conn.execute('''
         SELECT sc.player_id, pi.name, pi.team, pi.position
         FROM stats_cache sc
@@ -309,17 +306,31 @@ def missing_data():
         ORDER BY pi.name
     ''', (CURRENT_SEASON,)).fetchall()
 
+    # Players with a salary record but no stats in ANY season
+    # (catches csv_ synthetic IDs and players never scraped by MoneyPuck)
     salary_no_stats = conn.execute('''
         SELECT s.player_id, s.player_name AS name, s.team, s.position, s.aav, s.source
         FROM salaries s
-        LEFT JOIN stats_cache sc ON sc.player_id = s.player_id AND sc.season = ?
+        LEFT JOIN stats_cache sc ON sc.player_id = s.player_id
         WHERE sc.player_id IS NULL AND s.aav IS NOT NULL AND s.aav > 0
         ORDER BY s.aav DESC
-    ''', (CURRENT_SEASON,)).fetchall()
+    ''').fetchall()
+
+    # Summary counts for quick health check
+    salary_count = conn.execute('SELECT COUNT(*) FROM salaries').fetchone()[0]
+    stats_count = conn.execute(
+        'SELECT COUNT(*) FROM stats_cache WHERE season=?', (CURRENT_SEASON,)
+    ).fetchone()[0]
+    csv_count = conn.execute(
+        "SELECT COUNT(*) FROM salaries WHERE source='csv'"
+    ).fetchone()[0]
 
     conn.close()
     return jsonify({
         "season": CURRENT_SEASON,
+        "salary_count": salary_count,
+        "stats_count": stats_count,
+        "csv_salary_count": csv_count,
         "stats_no_salary": [dict(r) for r in stats_no_salary],
         "salary_no_stats": [dict(r) for r in salary_no_stats],
     })

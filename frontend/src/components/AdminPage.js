@@ -79,7 +79,12 @@ export default function AdminPage() {
   return (
     <div style={{ padding: '2rem', maxWidth: 1100, margin: '0 auto', color: '#e2e8f0' }}>
       <h1 style={{ color: '#4ade80', marginBottom: '0.25rem' }}>Admin — Missing Data Report</h1>
-      <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Season: {data?.season || '—'}</p>
+      <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '1.5rem', fontSize: 13, color: '#94a3b8' }}>
+        <span>Season: <b style={{ color: '#e2e8f0' }}>{data?.season || '—'}</b></span>
+        <span>Salary rows: <b style={{ color: '#e2e8f0' }}>{data?.salary_count ?? '—'}</b></span>
+        <span>CSV rows: <b style={{ color: '#fbbf24' }}>{data?.csv_salary_count ?? '—'}</b></span>
+        <span>Stats rows (current season): <b style={{ color: '#e2e8f0' }}>{data?.stats_count ?? '—'}</b></span>
+      </div>
 
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <button
