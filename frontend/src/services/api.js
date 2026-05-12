@@ -29,3 +29,8 @@ export async function triggerScrape() {
   const { data } = await api.post('/api/admin/scrape');
   return data;
 }
+
+export async function getMissingData() {
+  const { data } = await api.get('/api/admin/missing-data');
+  return data;
+}

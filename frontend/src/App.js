@@ -5,7 +5,12 @@ import PlayerCard from './components/PlayerCard';
 import SalaryEstimate from './components/SalaryEstimate';
 import ComparablesTable from './components/ComparablesTable';
 import StatSliders from './components/StatSliders';
+import AdminPage from './components/AdminPage';
 import { estimateSalary } from './services/api';
+
+if (window.location.hash === '#admin') {
+  document.title = 'Admin — NHL Salary Estimator';
+}
 
 const SKATER_WEIGHTS = {
   goals_per_60: 1.0,
@@ -25,6 +30,8 @@ const GOALIE_WEIGHTS = {
 };
 
 export default function App() {
+  if (window.location.hash === '#admin') return <AdminPage />;
+
   const [estimate, setEstimate] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -163,7 +170,7 @@ export default function App() {
       </main>
 
       <footer className="App-footer">
-        <p>Data: NHL Stats API · MoneyPuck · PuckPedia · Estimates are not official contract valuations.</p>
+        <p>Data: NHL Stats API · MoneyPuck · PuckPedia · Estimates are not official contract valuations. · <a href="#admin" style={{ color: '#475569' }}>Admin</a></p>
       </footer>
     </div>
   );

@@ -222,11 +222,12 @@ def estimate():
 
     reg_result = predict_salary(player_stats)
 
-    # Salary verdict
+    # Salary verdict — use regression estimate (stats-based) as primary source,
+    # fall back to comparables if regression didn't produce a result.
     verdict = None
-    if current_salary and current_salary.get("aav") and comp_result.get("estimate"):
+    estimated = reg_result.get("estimate") or comp_result.get("estimate")
+    if current_salary and current_salary.get("aav") and estimated:
         current_aav = current_salary["aav"]
-        estimated = comp_result["estimate"]
         diff = estimated - current_aav
         pct = (diff / current_aav * 100) if current_aav else 0
         if pct > 10:
@@ -239,6 +240,7 @@ def estimate():
             "status": status,
             "by": round(diff),
             "pct": round(pct, 1),
+            "based_on": "regression" if reg_result.get("estimate") else "comparables",
         }
 
     return jsonify({
@@ -279,6 +281,37 @@ def db_stats():
         "salary_count": get_salary_count(),
         "stats_count": get_stats_count(CURRENT_SEASON),
         "season": CURRENT_SEASON,
+    })
+
+
+@app.route("/api/admin/missing-data")
+def missing_data():
+    """Players with stats but no salary, and salary but no stats."""
+    from database.db import get_db
+    conn = get_db()
+
+    stats_no_salary = conn.execute('''
+        SELECT sc.player_id, pi.name, pi.team, pi.position
+        FROM stats_cache sc
+        LEFT JOIN salaries s ON s.player_id = sc.player_id
+        LEFT JOIN player_index pi ON pi.nhl_id = sc.player_id
+        WHERE s.player_id IS NULL AND sc.season = ?
+        ORDER BY pi.name
+    ''', (CURRENT_SEASON,)).fetchall()
+
+    salary_no_stats = conn.execute('''
+        SELECT s.player_id, s.player_name AS name, s.team, s.position, s.aav, s.source
+        FROM salaries s
+        LEFT JOIN stats_cache sc ON sc.player_id = s.player_id AND sc.season = ?
+        WHERE sc.player_id IS NULL AND s.aav IS NOT NULL AND s.aav > 0
+        ORDER BY s.aav DESC
+    ''', (CURRENT_SEASON,)).fetchall()
+
+    conn.close()
+    return jsonify({
+        "season": CURRENT_SEASON,
+        "stats_no_salary": [dict(r) for r in stats_no_salary],
+        "salary_no_stats": [dict(r) for r in salary_no_stats],
     })
 
 
