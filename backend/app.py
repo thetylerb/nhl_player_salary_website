@@ -25,7 +25,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app, origins=[FRONTEND_URL, "http://localhost:3000", "http://localhost:3001", "http://localhost:5173"])
+CORS(app, origins=[
+    FRONTEND_URL,
+    "https://nhl-player-salary-website.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:5173",
+])
 
 
 # ─── Startup ─────────────────────────────────────────────────────────────────
