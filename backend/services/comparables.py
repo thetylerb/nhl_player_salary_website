@@ -5,7 +5,7 @@ weight their salaries by inverse distance, return an estimate.
 
 import math
 import logging
-from database.db import get_all_with_salary
+from database.db import get_all_with_salary, get_cap_ceiling, get_current_cap_ceiling
 from config import CURRENT_SEASON
 
 logger = logging.getLogger(__name__)
@@ -18,13 +18,23 @@ GOALIE_STAT_KEYS = [
     "save_pct", "gaa", "quality_start_pct", "games_started",
 ]
 POSITION_GROUPS = {
-    "C": "F", "L": "F", "LW": "F", "R": "F", "RW": "F",
-    "D": "D", "G": "G",
+    "C": "F", "L": "F", "LW": "F", "R": "F", "RW": "F", "W": "F", "F": "F",
+    "D": "D", "LD": "D", "RD": "D",
+    "G": "G",
 }
 
 
 def _pos_group(position):
     return POSITION_GROUPS.get(position.upper(), "F")
+
+
+def _estimate_signing_year(player):
+    """Return the season start year when the contract was signed."""
+    expiry = player.get("expiry_season")
+    years = player.get("contract_years")
+    if expiry and years and int(years) > 0:
+        return int(expiry) - int(years)
+    return int(CURRENT_SEASON)
 
 
 def _safe_float(val, default=0.0):
@@ -145,16 +155,24 @@ def find_comparables(player_stats, weights=None, n=10,
     if not top_n:
         return _empty_result("No comparable players found")
 
-    # Salary estimate: inverse-distance weighted average
+    # Cap-normalize each comparable's AAV to cap% at signing, then weight-average
+    # and convert back to dollars at the current cap ceiling.
+    current_cap = get_current_cap_ceiling()
     total_weight = sum(1.0 / (d + 1e-9) for d, _, _ in top_n)
-    estimate = sum(
-        (1.0 / (d + 1e-9)) / total_weight * p["aav"]
+    estimate_pct = sum(
+        (1.0 / (d + 1e-9)) / total_weight
+        * (_safe_float(p["aav"]) / max(get_cap_ceiling(_estimate_signing_year(p)), 1))
         for d, _, p in top_n
     )
+    estimate = estimate_pct * current_cap
 
-    salaries = sorted([p["aav"] for _, _, p in top_n])
-    low = salaries[0]
-    high = salaries[-1]
+    # Range expressed as current-cap-equivalent of min/max comparable cap%
+    cap_pcts = sorted(
+        _safe_float(p["aav"]) / max(get_cap_ceiling(_estimate_signing_year(p)), 1)
+        for _, _, p in top_n
+    )
+    low = cap_pcts[0] * current_cap
+    high = cap_pcts[-1] * current_cap
 
     avg_sim = sum(sim for _, sim, _ in top_n) / len(top_n)
     if avg_sim > 0.7 and len(top_n) >= 8:

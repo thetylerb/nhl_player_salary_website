@@ -108,7 +108,8 @@
 }
 
 .search-result:last-child { border-bottom: none; }
-.search-result:hover { background: var(--bg-card-hover); }
+.search-result:hover,
+.search-result.highlighted { background: var(--bg-card-hover); }
 
 .result-name {
   font-weight: 600;

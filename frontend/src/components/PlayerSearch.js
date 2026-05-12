@@ -16,6 +16,7 @@ export default function PlayerSearch({ onPlayerSelect }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const debouncedQuery = useDebounce(query, 280);
   const containerRef = useRef(null);
 
@@ -30,6 +31,7 @@ export default function PlayerSearch({ onPlayerSelect }) {
       .then((players) => {
         setResults(players);
         setOpen(true);
+        setHighlightedIndex(players.length > 0 ? 0 : -1);
       })
       .catch(() => setResults([]))
       .finally(() => setLoading(false));
@@ -46,7 +48,25 @@ export default function PlayerSearch({ onPlayerSelect }) {
     setQuery('');
     setResults([]);
     setOpen(false);
+    setHighlightedIndex(-1);
   };
+
+  const handleKeyDown = useCallback((e) => {
+    if (!open || results.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((i) => Math.min(i + 1, results.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const target = results[highlightedIndex >= 0 ? highlightedIndex : 0];
+      if (target) handleSelect(target);
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    }
+  }, [open, results, highlightedIndex, handleSelect]);
 
   // Close on outside click
   useEffect(() => {
@@ -72,6 +92,7 @@ export default function PlayerSearch({ onPlayerSelect }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => results.length > 0 && setOpen(true)}
+          onKeyDown={handleKeyDown}
           autoComplete="off"
         />
         {query && (
@@ -93,7 +114,8 @@ export default function PlayerSearch({ onPlayerSelect }) {
           {!loading && results.map((player, i) => (
             <div
               key={player.nhl_id || i}
-              className="search-result"
+              className={`search-result${i === highlightedIndex ? ' highlighted' : ''}`}
+              onMouseEnter={() => setHighlightedIndex(i)}
               onClick={() => handleSelect(player)}
             >
               <div>

@@ -22,6 +22,14 @@ _index_built = False
 _index_lock = threading.Lock()
 
 
+def force_rebuild_player_index():
+    """Clear the in-process flag so build_player_index_background runs unconditionally."""
+    global _index_built
+    with _index_lock:
+        _index_built = False
+    build_player_index_background()
+
+
 def search_players(query):
     """Search for players by name using local DB index (fast) then NHL API."""
     from database.db import search_player_index
@@ -39,18 +47,18 @@ def search_players(query):
     return []
 
 
-def build_player_index_background():
+def build_player_index_background(force=False):
     """Fetch all 32 team rosters and populate the local player_index table."""
     global _index_built
     with _index_lock:
-        if _index_built:
+        if _index_built and not force:
             return
         _index_built = True
 
     from database.db import ensure_player_index_table, upsert_player_index, get_player_index_count
 
     ensure_player_index_table()
-    if get_player_index_count() >= 500:
+    if not force and get_player_index_count() >= 500:
         logger.info("Player index already populated, skipping roster fetch")
         return
 
@@ -93,21 +101,21 @@ def get_player_landing(nhl_id):
 def parse_skater_stats(landing):
     """Extract normalized skater stats from landing page."""
     try:
+        nhl_id = str(landing.get("playerId", ""))
+        position = landing.get("position", "") or landing.get("positionCode", "")
         info = {
-            "nhl_id": str(landing.get("playerId", "")),
+            "nhl_id": nhl_id,
             "name": (
                 landing.get("firstName", {}).get("default", "") + " " +
                 landing.get("lastName", {}).get("default", "")
             ).strip(),
             "team": landing.get("currentTeamAbbrev", ""),
-            "position": landing.get("positionCode", ""),
+            "position": position,
             "headshot_url": landing.get("headshot", ""),
             "birth_date": landing.get("birthDate", ""),
             "age": _calc_age(landing.get("birthDate", "")),
         }
 
-        # Pull career info for experience
-        career = landing.get("careerTotals", {}).get("regularSeason", {})
         seasons_played = landing.get("seasonTotals", [])
         nhl_seasons = [
             s for s in seasons_played
@@ -115,23 +123,44 @@ def parse_skater_stats(landing):
         ]
         info["experience"] = len(nhl_seasons)
 
-        # Current season stats
+        # featuredStats has counting stats but NO TOI — use it for goals/assists/points.
         featured = landing.get("featuredStats", {}).get("regularSeason", {})
-        sub = featured.get("subSeason", featured.get("career", {}))
+        sub = featured.get("subSeason", featured.get("career")) or {}
 
-        gp = sub.get("gamesPlayed", 0) or 1
-        goals = sub.get("goals", 0)
-        assists = sub.get("assists", 0)
-        points = sub.get("points", 0)
-        plus_minus = sub.get("plusMinus", 0)
-        toi_str = sub.get("timeOnIcePerGame", "00:00")
-        toi = _toi_to_minutes(toi_str)
-        pim = sub.get("pim", 0)
+        # seasonTotals has avgToi (MM:SS). Use the most recent season entry.
+        st = _get_current_season_totals(landing)
+
+        # If featuredStats is empty (traded players, inactive, etc.), fall back to seasonTotals.
+        if not sub or sub.get("gamesPlayed", 0) == 0:
+            logger.warning(
+                f"No featuredStats for {info['name']} (id={nhl_id}); falling back to seasonTotals"
+            )
+            sub = st
+
+        gp = int(sub.get("gamesPlayed", 0) or 0) or 1
+        goals     = int(sub.get("goals",    0) or 0)
+        assists   = int(sub.get("assists",   0) or 0)
+        points    = int(sub.get("points",    0) or 0)
+        plus_minus = int(sub.get("plusMinus", 0) or 0)
+
+        # TOI lives in seasonTotals.avgToi — featuredStats never has it.
+        toi_raw = (
+            st.get("avgToi")
+            or st.get("timeOnIcePerGame")
+            or sub.get("avgToi")
+            or sub.get("timeOnIcePerGame")
+        )
+        if not toi_raw:
+            logger.warning(
+                f"TOI missing for {info['name']} (id={nhl_id}): "
+                f"featuredStats keys={list(sub.keys())}, seasonTotals keys={list(st.keys())}"
+            )
+        toi = _toi_to_minutes(toi_raw) if toi_raw else 0.0
 
         toi_total_min = toi * gp
-        goals_per_60 = (goals / toi_total_min * 60) if toi_total_min > 0 else 0
-        assists_per_60 = (assists / toi_total_min * 60) if toi_total_min > 0 else 0
-        points_per_60 = (points / toi_total_min * 60) if toi_total_min > 0 else 0
+        goals_per_60   = (goals   / toi_total_min * 60) if toi_total_min > 0 else 0
+        assists_per_60  = (assists  / toi_total_min * 60) if toi_total_min > 0 else 0
+        points_per_60   = (points   / toi_total_min * 60) if toi_total_min > 0 else 0
 
         info["stats"] = {
             "games_played": gp,
@@ -143,22 +172,23 @@ def parse_skater_stats(landing):
             "goals_per_60": round(goals_per_60, 2),
             "assists_per_60": round(assists_per_60, 2),
             "points_per_60": round(points_per_60, 2),
-            # Advanced stats default to None; will be filled from MoneyPuck
+            # Advanced stats filled from MoneyPuck
             "corsi_for_pct": None,
             "xgf_pct": None,
             "penalty_diff_per_60": 0.0,
         }
         return info
     except Exception as e:
-        logger.error(f"Failed to parse skater stats: {e}")
+        logger.error(f"Failed to parse skater stats: {e}", exc_info=True)
         return None
 
 
 def parse_goalie_stats(landing):
     """Extract normalized goalie stats from landing page."""
     try:
+        nhl_id = str(landing.get("playerId", ""))
         info = {
-            "nhl_id": str(landing.get("playerId", "")),
+            "nhl_id": nhl_id,
             "name": (
                 landing.get("firstName", {}).get("default", "") + " " +
                 landing.get("lastName", {}).get("default", "")
@@ -178,12 +208,18 @@ def parse_goalie_stats(landing):
         info["experience"] = len(nhl_seasons)
 
         featured = landing.get("featuredStats", {}).get("regularSeason", {})
-        sub = featured.get("subSeason", featured.get("career", {}))
+        sub = featured.get("subSeason", featured.get("career")) or {}
 
-        gp = sub.get("gamesPlayed", 0) or 1
-        gs = sub.get("gamesStarted", gp)
-        gaa = sub.get("goalsAgainstAverage", 0.0)
-        sv_pct = sub.get("savePctg", 0.0)
+        if not sub or sub.get("gamesPlayed", 0) == 0:
+            logger.warning(
+                f"No featuredStats for goalie {info['name']} (id={nhl_id}); falling back to seasonTotals"
+            )
+            sub = _get_current_season_totals(landing)
+
+        gp     = int(sub.get("gamesPlayed",  0) or 0) or 1
+        gs     = int(sub.get("gamesStarted", gp) or gp)
+        gaa    = float(sub.get("goalsAgainstAverage", 0.0) or 0.0)
+        sv_pct = float(sub.get("savePctg",  0.0) or 0.0)
 
         info["stats"] = {
             "games_played": gp,
@@ -194,8 +230,21 @@ def parse_goalie_stats(landing):
         }
         return info
     except Exception as e:
-        logger.error(f"Failed to parse goalie stats: {e}")
+        logger.error(f"Failed to parse goalie stats: {e}", exc_info=True)
         return None
+
+
+def _get_current_season_totals(landing):
+    """Return the most recent NHL regular-season entry from seasonTotals."""
+    totals = landing.get("seasonTotals", [])
+    nhl_reg = [
+        s for s in totals
+        if s.get("leagueAbbrev") == "NHL" and s.get("gameTypeId") == 2
+    ]
+    if not nhl_reg:
+        return {}
+    nhl_reg.sort(key=lambda s: s.get("season", 0), reverse=True)
+    return nhl_reg[0]
 
 
 def get_player_info(nhl_id):
@@ -204,7 +253,8 @@ def get_player_info(nhl_id):
     if not landing:
         return None
 
-    position = landing.get("positionCode", "")
+    # API uses "position" at top level, not "positionCode"
+    position = landing.get("position", "") or landing.get("positionCode", "")
     if position == "G":
         return parse_goalie_stats(landing)
     else:

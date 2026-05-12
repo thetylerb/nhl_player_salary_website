@@ -35,18 +35,46 @@
   margin-top: 1px;
 }
 
+.estimate-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
 .estimate-value {
   font-size: 32px;
   font-weight: 800;
   color: var(--accent);
-  margin-bottom: 4px;
   line-height: 1;
 }
 
-.estimate-range {
-  font-size: 12px;
+.estimate-rmse {
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 16px;
+  line-height: 1;
+}
+
+.goalie-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  background: var(--yellow-dim);
+  border: 1px solid var(--yellow);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.goalie-disclaimer-icon {
+  color: var(--yellow);
+  font-size: 13px;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 /* Range bar */
