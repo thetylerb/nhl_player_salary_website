@@ -477,12 +477,12 @@ def _match_player_id(name, team=None):
             same_team = [e for e in candidates if e.get("team") == team]
             if same_team:
                 return same_team[0]["nhl_id"]
-            # Only fall back to a cross-team match when there is exactly one
-            # candidate — this handles traded players whose team has changed.
-            # With multiple candidates, a cross-team match risks assigning one
-            # player's salary to a different player with the same name.
-            if len(candidates) == 1:
-                return candidates[0]["nhl_id"]
+            # No same-team match → return None so the caller assigns a pp_ ID.
+            # Cross-team fallback is intentionally removed: it caused name
+            # collisions (e.g. two players named Sebastian Aho on different teams)
+            # to corrupt the matched player's salary record.
+            # Traded players are handled correctly because the player_index is
+            # rebuilt from live NHL rosters on every app startup.
             return None
         return candidates[0]["nhl_id"]
 
@@ -500,8 +500,6 @@ def _match_player_id(name, team=None):
                 same_team = [e for e in candidates if e.get("team") == team]
                 if same_team:
                     return same_team[0]["nhl_id"]
-                if len(candidates) == 1:
-                    return candidates[0]["nhl_id"]
                 return None
             return candidates[0]["nhl_id"]
 
