@@ -178,24 +178,12 @@ def estimate():
                 if val is not None:
                     info["stats"][key] = val
 
-    # Age/experience seed fallback (only for metadata, not stats)
-    seed_entry = next(
-        (p for p in get_seed_players() if p["player_id"] == player_id), None
-    )
-    if seed_entry:
-        if info.get("age", 0) == 0:
-            info["age"] = seed_entry.get("age", 0)
-        if info.get("experience", 0) == 0:
-            info["experience"] = seed_entry.get("experience", 0)
-
-    # Resolve FA type: explicit override > salary record > seed > default UFA
+    # Resolve FA type: explicit override > salary record > default UFA
     current_salary = get_salary(player_id)
     if fa_status != "auto":
         resolved_fa = fa_status
     elif current_salary and current_salary.get("fa_type"):
         resolved_fa = current_salary["fa_type"]
-    elif seed_entry and seed_entry.get("fa_type"):
-        resolved_fa = seed_entry["fa_type"]
     else:
         resolved_fa = "UFA"
 
