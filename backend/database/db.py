@@ -226,6 +226,30 @@ def get_all_with_salary_historical():
     return result
 
 
+def purge_seed_salaries():
+    """Delete all source='seed' salary rows so PuckPedia data takes over.
+
+    Only runs when there are also non-seed rows present — i.e. a real scrape has
+    already populated the table.  This prevents wiping the only data we have on
+    a fresh deploy before the first PuckPedia scrape completes.
+    """
+    conn = get_db()
+    seed_count = conn.execute(
+        "SELECT COUNT(*) FROM salaries WHERE source='seed'"
+    ).fetchone()[0]
+    real_count = conn.execute(
+        "SELECT COUNT(*) FROM salaries WHERE source!='seed'"
+    ).fetchone()[0]
+    conn.close()
+    if seed_count > 0 and real_count > 0:
+        conn = get_db()
+        conn.execute("DELETE FROM salaries WHERE source='seed'")
+        conn.commit()
+        conn.close()
+        logger = __import__('logging').getLogger(__name__)
+        logger.info(f"Purged {seed_count} seed salary rows (replaced by {real_count} scraped rows)")
+
+
 def get_salary_count():
     conn = get_db()
     count = conn.execute('SELECT COUNT(*) FROM salaries').fetchone()[0]

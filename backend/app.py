@@ -13,7 +13,7 @@ from database.db import (
     init_db, upsert_salary, upsert_stats,
     get_salary, get_stats, get_salary_count, get_stats_count,
     ensure_player_index_table, upsert_player_index,
-    clear_player_index, seed_cap_ceilings,
+    clear_player_index, seed_cap_ceilings, purge_seed_salaries,
 )
 from database.seed_data import get_seed_players
 from services.nhl_api import search_players, get_player_info, build_player_index_background, force_rebuild_player_index
@@ -60,6 +60,7 @@ def seed_database():
 init_db()
 seed_cap_ceilings()
 ensure_player_index_table()
+purge_seed_salaries()
 seed_database()
 
 # Clear the player index and rebuild from real NHL roster IDs.
