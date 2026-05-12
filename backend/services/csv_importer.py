@@ -84,19 +84,44 @@ def _load_index():
 def _match_player(name_norm, team, index):
     """
     Try to find an NHL ID in the player_index.
-    Priority: exact name + same team → exact name (any team).
+
+    Pass 1: exact normalised name + same team → exact name (any team).
+    Pass 2: last name + same team (catches nickname/spelling mismatches like
+            'Gabe' vs 'Gabriel', 'Thomas' vs 'Tom', 'Phillip' vs 'Philipp').
+    Pass 3: last word before hyphen + same team (catches 'Zuccarello-Aasen'
+            matching 'Zuccarello').
     Returns nhl_id string or None.
     """
+    # Pass 1 — exact normalised name
     candidates = [e for e in index if e["name_norm"] == name_norm]
-    if not candidates:
+    if candidates:
+        same_team = [e for e in candidates if e.get("team") == team]
+        if same_team:
+            return same_team[0]["nhl_id"]
+        if len(candidates) == 1:
+            return candidates[0]["nhl_id"]
         return None
-    same_team = [e for e in candidates if e.get("team") == team]
-    if same_team:
-        return same_team[0]["nhl_id"]
-    # One candidate with no team ambiguity
-    if len(candidates) == 1:
-        return candidates[0]["nhl_id"]
-    # Multiple candidates, different teams — can't resolve safely
+
+    # Pass 2 — last name + same team
+    last_name = name_norm.split()[-1] if name_norm else ""
+    if last_name and team:
+        last_name_matches = [
+            e for e in index
+            if e["name_norm"].split()[-1] == last_name and e.get("team") == team
+        ]
+        if len(last_name_matches) == 1:
+            return last_name_matches[0]["nhl_id"]
+
+    # Pass 3 — strip hyphenated suffix from last name (e.g. Zuccarello-Aasen → Zuccarello)
+    if "-" in last_name and team:
+        base_last = last_name.split("-")[0]
+        base_matches = [
+            e for e in index
+            if e["name_norm"].split()[-1] == base_last and e.get("team") == team
+        ]
+        if len(base_matches) == 1:
+            return base_matches[0]["nhl_id"]
+
     return None
 
 
