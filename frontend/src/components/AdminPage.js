@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getMissingData, triggerScrape } from '../services/api';
+import { getMissingData, triggerScrape, triggerHistoricalScrape } from '../services/api';
 
 function fmt(aav) {
   if (!aav) return '—';
@@ -12,6 +12,8 @@ export default function AdminPage() {
   const [error, setError] = useState(null);
   const [scraping, setScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState(null);
+  const [historicalScraping, setHistoricalScraping] = useState(false);
+  const [historicalResult, setHistoricalResult] = useState(null);
 
   useEffect(() => {
     getMissingData()
@@ -19,6 +21,21 @@ export default function AdminPage() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleHistoricalScrape() {
+    setHistoricalScraping(true);
+    setHistoricalResult(null);
+    try {
+      const result = await triggerHistoricalScrape();
+      setHistoricalResult(result);
+      const fresh = await getMissingData();
+      setData(fresh);
+    } catch (e) {
+      setHistoricalResult({ error: e.message });
+    } finally {
+      setHistoricalScraping(false);
+    }
+  }
 
   async function handleScrape() {
     setScraping(true);
@@ -40,22 +57,39 @@ export default function AdminPage() {
       <h1 style={{ color: '#4ade80', marginBottom: '0.25rem' }}>Admin — Missing Data Report</h1>
       <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Season: {data?.season || '—'}</p>
 
-      <button
-        onClick={handleScrape}
-        disabled={scraping}
-        style={{
-          background: scraping ? '#334155' : '#0ea5e9',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 8,
-          padding: '0.6rem 1.4rem',
-          cursor: scraping ? 'not-allowed' : 'pointer',
-          fontWeight: 600,
-          marginBottom: '1rem',
-        }}
-      >
-        {scraping ? 'Scraping… (~60s)' : 'Trigger Full Scrape Now'}
-      </button>
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <button
+          onClick={handleScrape}
+          disabled={scraping}
+          style={{
+            background: scraping ? '#334155' : '#0ea5e9',
+            color: '#fff', border: 'none', borderRadius: 8,
+            padding: '0.6rem 1.4rem', cursor: scraping ? 'not-allowed' : 'pointer', fontWeight: 600,
+          }}
+        >
+          {scraping ? 'Scraping… (~60s)' : 'Scrape Current Season (Stats + Salaries)'}
+        </button>
+
+        <button
+          onClick={handleHistoricalScrape}
+          disabled={historicalScraping}
+          style={{
+            background: historicalScraping ? '#334155' : '#7c3aed',
+            color: '#fff', border: 'none', borderRadius: 8,
+            padding: '0.6rem 1.4rem', cursor: historicalScraping ? 'not-allowed' : 'pointer', fontWeight: 600,
+          }}
+        >
+          {historicalScraping ? 'Scraping history… (~2 min)' : 'Scrape Historical Stats (2019 → present)'}
+        </button>
+      </div>
+
+      {historicalResult && (
+        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: '#1e293b', borderRadius: 8, fontSize: 14 }}>
+          {historicalResult.error
+            ? <span style={{ color: '#f87171' }}>Error: {historicalResult.error}</span>
+            : <span style={{ color: '#c084fc' }}>Historical scrape done — {historicalResult.rows} stat rows added</span>}
+        </div>
+      )}
 
       {scrapeResult && (
         <div style={{ marginBottom: '1.5rem', padding: '0.75rem 1rem', background: '#1e293b', borderRadius: 8, fontSize: 14 }}>

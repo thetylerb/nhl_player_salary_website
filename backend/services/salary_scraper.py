@@ -14,7 +14,7 @@ from datetime import datetime
 
 import requests
 
-from config import MONEYPUCK_BASE, CURRENT_SEASON
+from config import MONEYPUCK_BASE, CURRENT_SEASON, HISTORICAL_SEASON_START
 from database.db import upsert_stats, upsert_salary, get_db, search_player_index, upsert_player_index
 
 logger = logging.getLogger(__name__)
@@ -535,6 +535,20 @@ def _parse_expiry(text):
 
 
 # ─── Orchestrators ────────────────────────────────────────────────────────────
+
+def run_historical_stats_scrape(start_season=None):
+    """Scrape MoneyPuck stats for all past seasons from start_season to current-1."""
+    start = start_season or HISTORICAL_SEASON_START
+    end = int(CURRENT_SEASON)  # stop before current (already handled by daily scrape)
+    logger.info(f"Historical stats scrape: seasons {start} to {end - 1}")
+    total = 0
+    for yr in range(start, end):
+        logger.info(f"Fetching season {yr}...")
+        total += fetch_moneypuck_skaters(str(yr))
+        total += fetch_moneypuck_goalies(str(yr))
+    logger.info(f"Historical stats scrape complete: {total} rows")
+    return total
+
 
 def run_daily_scrape():
     """MoneyPuck stats only — runs every 24h via APScheduler."""

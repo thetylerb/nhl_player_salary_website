@@ -5,7 +5,7 @@ weight their salaries by inverse distance, return an estimate.
 
 import math
 import logging
-from database.db import get_all_with_salary, get_cap_ceiling, get_current_cap_ceiling
+from database.db import get_all_with_salary, get_all_with_salary_historical, get_cap_ceiling, get_current_cap_ceiling
 from config import CURRENT_SEASON
 
 logger = logging.getLogger(__name__)
@@ -94,8 +94,8 @@ def find_comparables(player_stats, weights=None, n=10,
     if weights is None:
         weights = {k: 1.0 for k in stat_keys}
 
-    # Load all players with salary + stats
-    all_players = get_all_with_salary(season)
+    # Load all players with salary + stats across all scraped seasons
+    all_players = get_all_with_salary_historical() or get_all_with_salary(season)
     if not all_players:
         return _empty_result("No salary/stats data in database")
 

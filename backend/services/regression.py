@@ -9,7 +9,7 @@ import logging
 import math
 from datetime import datetime, timedelta
 
-from database.db import get_all_with_salary, get_cap_ceiling, get_current_cap_ceiling
+from database.db import get_all_with_salary, get_all_with_salary_historical, get_cap_ceiling, get_current_cap_ceiling
 from config import CURRENT_SEASON
 
 logger = logging.getLogger(__name__)
@@ -80,22 +80,36 @@ def _estimate_signing_year(player):
 
 
 def _build_training_data(pg, season):
-    all_players = get_all_with_salary(season)
-    pool = [p for p in all_players if _pos_group(p.get("position", "")) == pg]
+    # Use all historical seasons for more training data. Each (player, season)
+    # row is a separate sample: stats from that season paired with the player's
+    # AAV normalised by the cap ceiling for that same season.
+    all_rows = get_all_with_salary_historical()
+
+    # Fall back to current-season-only if historical pull is empty
+    if not all_rows:
+        all_rows = get_all_with_salary(season)
+
+    pool = [p for p in all_rows if _pos_group(p.get("position", "")) == pg]
 
     X, y = [], []
+    seen = set()
     for p in pool:
         aav = _safe_float(p.get("aav"))
         if aav <= 0:
             continue
-        signing_year = _estimate_signing_year(p)
-        cap = get_cap_ceiling(signing_year)
+        stat_season = int(p.get("season", season))
+        cap = get_cap_ceiling(stat_season)
         if cap <= 0:
             continue
         cap_pct = aav / cap
         feats = _extract_features(p, pg)
         if any(math.isnan(f) or math.isinf(f) for f in feats):
             continue
+        # Deduplicate identical (player, season) rows
+        key = (p.get("player_id"), stat_season)
+        if key in seen:
+            continue
+        seen.add(key)
         X.append(feats)
         y.append(cap_pct)
     return X, y

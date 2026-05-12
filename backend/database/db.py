@@ -185,16 +185,38 @@ def get_stats(player_id, season):
 
 
 def get_all_with_salary(season):
-    """Return all players that have both a salary and cached stats."""
+    """Return all players that have both a salary and cached stats for one season."""
     conn = get_db()
     rows = conn.execute('''
         SELECT s.player_id, s.player_name, s.team,
                COALESCE(NULLIF(sc.position, ''), NULLIF(s.position, ''), '') AS position,
-               s.aav, s.fa_type, s.expiry_season, s.contract_years, sc.stats_json
+               s.aav, s.fa_type, s.expiry_season, s.contract_years, sc.stats_json,
+               sc.season
         FROM salaries s
         JOIN stats_cache sc ON sc.player_id = s.player_id AND sc.season = ?
         WHERE s.aav IS NOT NULL AND s.aav > 0
     ''', (season,)).fetchall()
+    conn.close()
+    result = []
+    for row in rows:
+        d = dict(row)
+        d['stats'] = json.loads(d['stats_json'])
+        result.append(d)
+    return result
+
+
+def get_all_with_salary_historical():
+    """Return all (player, season) combos that have a salary and stats — every season."""
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT s.player_id, s.player_name, s.team,
+               COALESCE(NULLIF(sc.position, ''), NULLIF(s.position, ''), '') AS position,
+               s.aav, s.fa_type, s.expiry_season, s.contract_years, sc.stats_json,
+               sc.season
+        FROM salaries s
+        JOIN stats_cache sc ON sc.player_id = s.player_id
+        WHERE s.aav IS NOT NULL AND s.aav > 0
+    ''').fetchall()
     conn.close()
     result = []
     for row in rows:

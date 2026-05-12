@@ -19,7 +19,7 @@ from database.seed_data import get_seed_players
 from services.nhl_api import search_players, get_player_info, build_player_index_background, force_rebuild_player_index
 from services.comparables import find_comparables
 from services.regression import predict_salary, invalidate_models
-from services.salary_scraper import run_daily_scrape, run_weekly_salary_scrape
+from services.salary_scraper import run_daily_scrape, run_weekly_salary_scrape, run_historical_stats_scrape
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -282,6 +282,14 @@ def db_stats():
         "stats_count": get_stats_count(CURRENT_SEASON),
         "season": CURRENT_SEASON,
     })
+
+
+@app.route("/api/admin/scrape-historical", methods=["POST"])
+def trigger_historical_scrape():
+    """Scrape MoneyPuck stats for all past seasons (2019 → current-1)."""
+    rows = run_historical_stats_scrape()
+    invalidate_models()
+    return jsonify({"status": "ok", "rows": rows})
 
 
 @app.route("/api/admin/missing-data")

@@ -34,3 +34,8 @@ export async function getMissingData() {
   const { data } = await api.get('/api/admin/missing-data');
   return data;
 }
+
+export async function triggerHistoricalScrape() {
+  const { data } = await api.post('/api/admin/scrape-historical');
+  return data;
+}
