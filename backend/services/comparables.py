@@ -11,11 +11,14 @@ from config import CURRENT_SEASON
 logger = logging.getLogger(__name__)
 
 SKATER_STAT_KEYS = [
-    "goals_per_60", "assists_per_60", "points_per_60",
-    "toi_per_game", "corsi_for_pct", "xgf_pct", "penalty_diff_per_60",
+    "goals_per_60", "primary_points_per_60", "points_per_60", "ixg_per_60",
+    "toi_per_game", "zone_start_pct",
+    "corsi_for_pct", "xgf_pct", "on_ice_hd_cf_pct",
+    "shots_per_60", "hd_goals_per_60", "hits_per_60",
+    "penalty_diff_per_60",
 ]
 GOALIE_STAT_KEYS = [
-    "save_pct", "gaa", "quality_start_pct", "games_started",
+    "save_pct", "gaa", "quality_start_pct", "hd_save_pct", "gsaa", "games_started",
 ]
 POSITION_GROUPS = {
     "C": "F", "L": "F", "LW": "F", "R": "F", "RW": "F", "W": "F", "F": "F",

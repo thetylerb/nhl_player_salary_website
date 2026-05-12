@@ -153,6 +153,24 @@ def _parse_skater_csv(text, season):
 
             toi_h = toi_sec / 3600 if toi_sec > 0 else 1
 
+            # Extended MoneyPuck columns
+            ix_goals      = float(row.get("I_F_xGoals", 0) or 0)
+            hd_goals      = float(row.get("I_F_highDangerGoals", 0) or 0)
+            shots_on_goal = float(row.get("I_F_shotsOnGoal", 0) or 0)
+            rebounds      = float(row.get("I_F_rebounds", 0) or 0)
+            rush_att      = float(row.get("I_F_rush_attempts", 0) or 0)
+            hits          = float(row.get("I_F_hits", 0) or 0)
+            takeaways     = float(row.get("I_F_takeaways", 0) or 0)
+            giveaways     = float(row.get("I_F_giveaways", 0) or 0)
+
+            on_ice_hd_f   = float(row.get("OnIce_F_highDangerShots", 0) or 0)
+            on_ice_hd_a   = float(row.get("OnIce_A_highDangerShots", 0) or 0)
+
+            oz = float(row.get("offenseZoneStartsWith60", 0) or 0)
+            dz = float(row.get("defenseZoneStartsWith60", 0) or 0)
+            nz = float(row.get("neutralZoneStartsWith60", 0) or 0)
+            total_starts  = oz + dz + nz
+
             stats = {
                 "games_played": gp,
                 "goals": int(goals),
@@ -162,8 +180,18 @@ def _parse_skater_csv(text, season):
                 "goals_per_60": round(goals / toi_h, 2),
                 "assists_per_60": round(assists / toi_h, 2),
                 "points_per_60": round(points / toi_h, 2),
+                "primary_points_per_60": round((goals + primary_a) / toi_h, 2),
+                "ixg_per_60": round(ix_goals / toi_h, 2),
+                "hd_goals_per_60": round(hd_goals / toi_h, 2),
+                "shots_per_60": round(shots_on_goal / toi_h, 2),
+                "rebounds_per_60": round(rebounds / toi_h, 2),
+                "rush_attempts_per_60": round(rush_att / toi_h, 2),
+                "hits_per_60": round(hits / toi_h, 2),
+                "takeaway_giveaway_ratio": round(takeaways / max(giveaways, 1), 2),
                 "corsi_for_pct": round(cf / (cf + ca) * 100, 1) if (cf + ca) > 0 else 50.0,
                 "xgf_pct": round(xgf / (xgf + xga) * 100, 1) if (xgf + xga) > 0 else 50.0,
+                "on_ice_hd_cf_pct": round(on_ice_hd_f / (on_ice_hd_f + on_ice_hd_a) * 100, 1) if (on_ice_hd_f + on_ice_hd_a) > 0 else 50.0,
+                "zone_start_pct": round(oz / total_starts * 100, 1) if total_starts > 0 else 50.0,
                 "penalty_diff_per_60": round((drawn - taken) / toi_h, 2),
                 "plus_minus": 0,
             }
@@ -213,12 +241,18 @@ def _parse_goalie_csv(text, season):
             hd_saves = float(row.get("highDangerSaves", 0) or 0)
             qs_pct = round(hd_saves / hd_shots, 3) if hd_shots > 0 else sv_pct
 
+            xga_total = float(row.get("xGoalsAgainst", row.get("xGoals_Against", 0)) or 0)
+            gsaa = round(xga_total - ga, 2)  # positive = saved more than expected
+
             stats = {
                 "games_played": gp,
                 "games_started": gs,
                 "gaa": gaa,
                 "save_pct": sv_pct,
                 "quality_start_pct": qs_pct,
+                "gsaa": gsaa,
+                "hd_save_pct": round(hd_saves / hd_shots, 4) if hd_shots > 0 else sv_pct,
+                "toi_per_game": round((toi_sec / 60) / gp, 2) if gp > 0 else 0.0,
             }
             upsert_stats(player_id, season, "G", stats)
 

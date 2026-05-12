@@ -22,12 +22,19 @@ MODEL_TTL_HOURS = 6
 _rmse_cache = {}
 
 SKATER_FEATURES = [
-    "goals_per_60", "assists_per_60", "points_per_60",
-    "toi_per_game", "corsi_for_pct", "xgf_pct",
+    # Production — raw and expected
+    "goals_per_60", "primary_points_per_60", "points_per_60", "ixg_per_60",
+    # Role / deployment
+    "toi_per_game", "zone_start_pct",
+    # On-ice possession
+    "corsi_for_pct", "xgf_pct", "on_ice_hd_cf_pct",
+    # Shot generation & physical
+    "shots_per_60", "hd_goals_per_60", "hits_per_60",
+    # Discipline
     "penalty_diff_per_60",
 ]
 GOALIE_FEATURES = [
-    "save_pct", "gaa", "quality_start_pct", "games_started",
+    "save_pct", "gaa", "quality_start_pct", "hd_save_pct", "gsaa", "games_started",
 ]
 COMMON_FEATURES = ["age", "experience", "is_ufa"]
 
