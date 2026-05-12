@@ -174,8 +174,15 @@ def import_contracts_from_stream(stream, filename="upload"):
             skipped += 1
             continue
 
-        # Sort oldest→newest so newest upsert wins in the salaries table
-        contracts.sort(key=lambda r: int(r.get("End", 0) or 0))
+        # Sort so currently-active contracts come last and win the upsert.
+        # A contract is "active" if start <= current_year < end.
+        # Among ties, higher End wins (longer/later contract).
+        def _priority(r):
+            s = int(r.get("Start", 0) or 0)
+            e = int(r.get("End", 0) or 0)
+            return (1 if s <= current_year < e else 0, e)
+
+        contracts.sort(key=_priority)
 
         norm = _normalize(player_name)
 
