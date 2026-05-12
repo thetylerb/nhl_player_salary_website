@@ -39,3 +39,17 @@ export async function triggerHistoricalScrape() {
   const { data } = await api.post('/api/admin/scrape-historical');
   return data;
 }
+
+export async function importCsv(file) {
+  if (file) {
+    const form = new FormData();
+    form.append('file', file);
+    const { data } = await api.post('/api/admin/import-csv', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    });
+    return data;
+  }
+  const { data } = await api.post('/api/admin/import-csv', null, { timeout: 60000 });
+  return data;
+}

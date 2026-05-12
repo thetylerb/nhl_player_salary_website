@@ -20,6 +20,7 @@ from services.nhl_api import search_players, get_player_info, build_player_index
 from services.comparables import find_comparables
 from services.regression import predict_salary, invalidate_models
 from services.salary_scraper import run_daily_scrape, run_weekly_salary_scrape, run_historical_stats_scrape
+from services.csv_importer import import_contracts_from_stream, import_contracts_from_file
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -323,6 +324,29 @@ def missing_data():
         "salary_no_stats": [dict(r) for r in salary_no_stats],
     })
 
+
+
+@app.route("/api/admin/import-csv", methods=["POST"])
+def import_csv():
+    """
+    Accept a multipart CSV upload OR re-import the bundled data/nhl_contracts.csv.
+    POST with no file body → re-import bundled CSV.
+    POST with file field 'file' → import that CSV.
+    """
+    import os
+    from services.csv_importer import import_contracts_from_stream, import_contracts_from_file
+
+    if 'file' in request.files:
+        f = request.files['file']
+        result = import_contracts_from_stream(f.stream)
+    else:
+        bundled = os.path.join(os.path.dirname(__file__), "data", "nhl_contracts.csv")
+        if not os.path.exists(bundled):
+            return jsonify({"error": "No bundled CSV found and no file uploaded"}), 400
+        result = import_contracts_from_file(bundled)
+
+    invalidate_models()
+    return jsonify({"status": "ok", **result})
 
 
 @app.route("/api/debug/search")

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { getMissingData, triggerScrape, triggerHistoricalScrape } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { getMissingData, triggerScrape, triggerHistoricalScrape, importCsv } from '../services/api';
 
 function fmt(aav) {
   if (!aav) return '—';
@@ -14,6 +14,9 @@ export default function AdminPage() {
   const [scrapeResult, setScrapeResult] = useState(null);
   const [historicalScraping, setHistoricalScraping] = useState(false);
   const [historicalResult, setHistoricalResult] = useState(null);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvResult, setCsvResult] = useState(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     getMissingData()
@@ -52,6 +55,27 @@ export default function AdminPage() {
     }
   }
 
+  async function handleCsvImport(file) {
+    setCsvImporting(true);
+    setCsvResult(null);
+    try {
+      const result = await importCsv(file || null);
+      setCsvResult(result);
+      const fresh = await getMissingData();
+      setData(fresh);
+    } catch (e) {
+      setCsvResult({ error: e.message });
+    } finally {
+      setCsvImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  function handleFileChange(e) {
+    const file = e.target.files[0];
+    if (file) handleCsvImport(file);
+  }
+
   return (
     <div style={{ padding: '2rem', maxWidth: 1100, margin: '0 auto', color: '#e2e8f0' }}>
       <h1 style={{ color: '#4ade80', marginBottom: '0.25rem' }}>Admin — Missing Data Report</h1>
@@ -81,7 +105,53 @@ export default function AdminPage() {
         >
           {historicalScraping ? 'Scraping history… (~2 min)' : 'Scrape Historical Stats (2019 → present)'}
         </button>
+
+        <button
+          onClick={() => handleCsvImport(null)}
+          disabled={csvImporting}
+          style={{
+            background: csvImporting ? '#334155' : '#f59e0b',
+            color: '#fff', border: 'none', borderRadius: 8,
+            padding: '0.6rem 1.4rem', cursor: csvImporting ? 'not-allowed' : 'pointer', fontWeight: 600,
+          }}
+        >
+          {csvImporting ? 'Importing…' : 'Re-import Bundled CSV'}
+        </button>
+
+        <label style={{
+          background: csvImporting ? '#334155' : '#ea580c',
+          color: '#fff', borderRadius: 8,
+          padding: '0.6rem 1.4rem', cursor: csvImporting ? 'not-allowed' : 'pointer', fontWeight: 600,
+          display: 'inline-block',
+        }}>
+          Upload New CSV
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            onChange={handleFileChange}
+            disabled={csvImporting}
+            style={{ display: 'none' }}
+          />
+        </label>
       </div>
+
+      {csvResult && (
+        <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: '#1e293b', borderRadius: 8, fontSize: 14 }}>
+          {csvResult.error
+            ? <span style={{ color: '#f87171' }}>CSV error: {csvResult.error}</span>
+            : (
+              <span style={{ color: '#fbbf24' }}>
+                CSV import done — {csvResult.matched} matched, {csvResult.unmatched} unmatched
+                {csvResult.unmatched_names?.length > 0 && (
+                  <span style={{ color: '#94a3b8' }}>
+                    {' '}({csvResult.unmatched_names.join(', ')})
+                  </span>
+                )}
+              </span>
+            )}
+        </div>
+      )}
 
       {historicalResult && (
         <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: '#1e293b', borderRadius: 8, fontSize: 14 }}>
@@ -118,7 +188,7 @@ export default function AdminPage() {
 
           <Section
             title={`Stats missing — has contract, no stats (${data.salary_no_stats.length} players)`}
-            subtitle="These players have a PuckPedia salary record but no MoneyPuck stats. Likely minor-league, LTIR, or a pp_ ID mismatch."
+            subtitle="These players have a salary record but no MoneyPuck stats. Likely minor-league, LTIR, or an ID mismatch."
             rows={data.salary_no_stats}
             columns={[
               { key: 'name', label: 'Player' },
