@@ -68,13 +68,17 @@ def _fa_type(age_at_signing, contract_start, contract_end):
 
 
 def _load_index():
-    """Return list of player_index rows as dicts."""
+    """Return list of player_index rows as dicts, with name_norm computed."""
     conn = get_db()
     rows = conn.execute(
-        "SELECT nhl_id, name, name_norm, team FROM player_index"
+        "SELECT nhl_id, name, team FROM player_index"
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return [
+        {"nhl_id": r["nhl_id"], "name": r["name"],
+         "name_norm": _normalize(r["name"]), "team": r["team"]}
+        for r in rows
+    ]
 
 
 def _match_player(name_norm, team, index):
