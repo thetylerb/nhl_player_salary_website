@@ -36,7 +36,28 @@
       "Bash(fuser -k 5000/tcp)",
       "Bash(PYTHONUNBUFFERED=1 python -u app.py)",
       "Bash(tee backend.log)",
-      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\style\\\\OneDrive\\\\Desktop\\\\nhl_player_salary_website\" | ForEach-Object { $_.Name })"
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\style\\\\OneDrive\\\\Desktop\\\\nhl_player_salary_website\" | ForEach-Object { $_.Name })",
+      "PowerShell(netstat *)",
+      "PowerShell(Invoke-RestMethod \"http://localhost:5000/api/players/search?q=mcdavid\" | ConvertTo-Json -Depth 5)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Stop-Process *)",
+      "PowerShell(Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd 'C:\\\\Users\\\\style\\\\OneDrive\\\\Desktop\\\\nhl_player_salary_website\\\\backend'; python app.py\")",
+      "PowerShell(Start-Sleep -Seconds 3; Invoke-RestMethod \"http://localhost:5000/api/health\")",
+      "PowerShell(Start-Sleep -Seconds 4; try { Invoke-RestMethod \"http://localhost:5000/api/health\" | ConvertTo-Json } catch { $_.Exception.Message })",
+      "PowerShell(try { Invoke-RestMethod -Method POST \"http://localhost:5000/api/admin/scrape\" -TimeoutSec 180 | ConvertTo-Json } catch { $_.Exception.Message })",
+      "PowerShell($resp = Invoke-WebRequest \"https://puckpedia.com/team/edm\" -UserAgent \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/124.0.0.0 Safari/537.36\" -UseBasicParsing -TimeoutSec 30; Write-Host \"Status:\" $resp.StatusCode; Write-Host \"Content length:\" $resp.Content.Length; $resp.Content.Substring\\(0, 2000\\))",
+      "PowerShell(pip install *)",
+      "PowerShell(Write-Host \"Triggering full scrape \\(32 teams, ~60s\\)...\"; try { $r = Invoke-RestMethod -Method POST \"http://localhost:5000/api/admin/scrape\" -TimeoutSec 300; $r | ConvertTo-Json } catch { $_.Exception.Message })",
+      "Bash(python3 -m json.tool)",
+      "PowerShell($maxWait = 90; $waited = 0; do { Start-Sleep -Seconds 5; $waited += 5; try { $r = Invoke-RestMethod \"http://localhost:5000/api/debug/search?q=mcdavid\"; Write-Host \"index_count=$\\($r.index_count\\) waited=${waited}s\" } catch { Write-Host \"not ready yet\" } } until \\($r.index_count -ge 500 -or $waited -ge $maxWait\\); $r | ConvertTo-Json -Depth 4)",
+      "Bash(python diagnose_toi.py)",
+      "Bash(del *)",
+      "Bash(python audit_data_quality.py)",
+      "Bash(python audit_salary_gap.py)",
+      "Bash(python fix_salary_gap.py)",
+      "PowerShell(Remove-Item *)",
+      "Bash(npx react-scripts *)",
+      "Bash(git *)"
     ]
   }
 }
