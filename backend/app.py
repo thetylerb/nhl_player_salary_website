@@ -28,6 +28,7 @@ app = Flask(__name__)
 CORS(app, origins=[
     FRONTEND_URL,
     "https://nhl-player-salary-website.vercel.app",
+    "https://perfect-imagination-production-cd0a.up.railway.app",
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:5173",
