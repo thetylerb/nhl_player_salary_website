@@ -1,21 +1,20 @@
 import React, { useCallback } from 'react';
-import './StatSliders.css';
 
 const SKATER_LABELS = {
-  goals_per_60:       'Goals / 60',
-  assists_per_60:     'Assists / 60',
-  points_per_60:      'Points / 60',
-  toi_per_game:       'TOI / Game',
-  corsi_for_pct:      'Corsi For %',
-  xgf_pct:            'xGF %',
-  penalty_diff_per_60:'Penalty Differential / 60',
+  goals_per_60:        { main: 'Goals',        sub: '/ 60' },
+  assists_per_60:      { main: 'Assists',       sub: '/ 60' },
+  points_per_60:       { main: 'Points',        sub: '/ 60' },
+  toi_per_game:        { main: 'TOI',           sub: '/ game' },
+  corsi_for_pct:       { main: 'Corsi',         sub: 'For %' },
+  xgf_pct:             { main: 'xGF',           sub: '%' },
+  penalty_diff_per_60: { main: 'Penalty Diff',  sub: '/ 60' },
 };
 
 const GOALIE_LABELS = {
-  save_pct:           'Save %',
-  gaa:                'GAA',
-  quality_start_pct:  'Quality Start %',
-  games_started:      'Games Started',
+  save_pct:           { main: 'Save %',         sub: '' },
+  gaa:                { main: 'GAA',            sub: '' },
+  quality_start_pct:  { main: 'Quality Start',  sub: '%' },
+  games_started:      { main: 'Games Started',  sub: '' },
 };
 
 const SKATER_DEFAULTS = {
@@ -31,6 +30,7 @@ export default function StatSliders({
   weights, isGoalie, onWeightsChange,
   faStatus, onFaStatusChange,
   positionFilter, onPositionFilterChange,
+  loading,
 }) {
   const labels = isGoalie ? GOALIE_LABELS : SKATER_LABELS;
   const defaults = isGoalie ? GOALIE_DEFAULTS : SKATER_DEFAULTS;
@@ -42,68 +42,82 @@ export default function StatSliders({
   const handleReset = () => onWeightsChange({ ...defaults });
 
   return (
-    <div className="sliders-card">
-      <div className="sliders-header">
-        <span className="sliders-title">Stat Weights</span>
-        <button className="reset-btn" onClick={handleReset}>Reset</button>
+    <article className="card sliders">
+      <div className="card-head">
+        <div className="card-title"><span className="ix">05</span> Stat Weights</div>
+        <div className="card-tag">Live</div>
       </div>
 
-      <div className="sliders-controls">
-        <div className="control-row">
-          <span className="control-label">FA Status</span>
-          <div className="toggle-group">
+      <div className="sliders-head">
+        <div className="ctrl-row">
+          <span className="ctrl-label">FA Status</span>
+          <div className="seg">
             {['auto', 'RFA', 'UFA'].map((opt) => (
               <button
                 key={opt}
-                className={`toggle-btn ${faStatus === opt ? 'active' : ''}`}
+                className={faStatus === opt ? 'on' : ''}
                 onClick={() => onFaStatusChange(opt)}
               >
-                {opt}
+                {opt === 'auto' ? 'Auto' : opt}
               </button>
             ))}
           </div>
         </div>
-
-        <div className="control-row">
-          <span className="control-label">Position filter</span>
-          <div className="toggle-group">
-            <button
-              className={`toggle-btn ${positionFilter ? 'active' : ''}`}
-              onClick={() => onPositionFilterChange(true)}
-            >
-              On
-            </button>
-            <button
-              className={`toggle-btn ${!positionFilter ? 'active' : ''}`}
-              onClick={() => onPositionFilterChange(false)}
-            >
-              Off
-            </button>
+        <div className="ctrl-row">
+          <span className="ctrl-label">Position Filter</span>
+          <div className="seg">
+            <button className={positionFilter ? 'on' : ''} onClick={() => onPositionFilterChange(true)}>On</button>
+            <button className={!positionFilter ? 'on' : ''} onClick={() => onPositionFilterChange(false)}>Off</button>
           </div>
         </div>
       </div>
 
       <div className="sliders-body">
-        {Object.entries(labels).map(([key, label]) => {
-          const val = weights[key] ?? 0.5;
-          return (
-            <div className="slider-row" key={key}>
-              <div className="slider-row-top">
-                <span className="slider-key">{label}</span>
-                <span className="slider-val">{val.toFixed(1)}</span>
+        <div className="sliders-list">
+          {Object.entries(labels).map(([key, { main, sub }]) => {
+            const val = weights[key] ?? 0.5;
+            const pct = (val / 2) * 100; // 0–2 range → 0–100%
+            return (
+              <div className="slider-row" key={key}>
+                <div className="slider-row-top">
+                  <span className="slider-key">
+                    {main}
+                    {sub && <span className="slider-key-sub">{sub}</span>}
+                  </span>
+                  <span className="slider-val">{val.toFixed(1)}</span>
+                </div>
+                <div className="slider-track">
+                  <div className="slider-rail" />
+                  <div className="slider-rail-fill" style={{ width: `${pct}%` }} />
+                  <div className="slider-thumb" style={{ left: `${pct}%` }} />
+                  <input
+                    className="slider-native"
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={val}
+                    onChange={(e) => handleSlider(key, e.target.value)}
+                  />
+                  <div className="slider-ticks">
+                    <span>0</span><span>1</span><span>2</span>
+                  </div>
+                </div>
               </div>
-              <input
-                type="range"
-                min="0"
-                max="2"
-                step="0.1"
-                value={val}
-                onChange={(e) => handleSlider(key, e.target.value)}
-              />
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      <div className="sliders-foot">
+        <button className="reset-btn" onClick={handleReset}>↺ Reset</button>
+        {loading && (
+          <div className="recalc-tag">
+            <span className="live-dot" />
+            Recalculating…
+          </div>
+        )}
+      </div>
+    </article>
   );
 }
