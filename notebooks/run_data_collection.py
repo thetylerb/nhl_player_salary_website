@@ -162,11 +162,18 @@ ALL_COLS = [
     'I_F_oZoneShiftStarts','I_F_dZoneShiftStarts','I_F_neutralZoneShiftStarts',
 ]
 GOALIE_ALL_COLS = [
-    'playerId','season','name','team','position','games_played','icetime','gameScore',
-    'shotsOnGoalAgainst','goalsAgainst',
-    'xGoalsAgainst','highDangerShotsAgainst','highDangerGoalsAgainst',
-    'highDangerSaves','lowDangerShotsAgainst','mediumDangerShotsAgainst',
-    'games_started',
+    # base
+    'playerId','season','name','team','position','games_played','icetime',
+    # shots / goals against (goalie perspective: these are shots/goals faced)
+    'ongoal',            # shots on goal against
+    'goals',             # goals against
+    'xGoals',           # expected goals against
+    'flurryAdjustedxGoals',
+    # danger zones
+    'highDangerShots','highDangerGoals','highDangerxGoals',
+    'mediumDangerShots','mediumDangerGoals','mediumDangerxGoals',
+    'lowDangerShots','lowDangerGoals','lowDangerxGoals',
+    'unblocked_shot_attempts',
 ]
 SPLIT_COLS = [
     'playerId','season','situation','icetime',
