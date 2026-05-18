@@ -15,6 +15,7 @@ from database.db import (
     ensure_player_index_table,
     clear_player_index, seed_cap_ceilings, purge_seed_salaries,
 )
+from config import HISTORICAL_SEASON_START
 from services.nhl_api import search_players, get_player_info, build_player_index_background, force_rebuild_player_index
 from services.comparables import find_comparables
 from services.regression import predict_salary, invalidate_models
@@ -65,6 +66,20 @@ def _startup_sequence():
             logger.error(f"CSV auto-import failed: {e}")
     else:
         logger.warning(f"Bundled CSV not found at {_CSV_PATH}")
+
+    # Historical stats: scrape past seasons if none exist yet.
+    # On Railway the SQLite DB resets on every deploy, so this runs each time —
+    # but it's in the background so the app stays responsive while it populates.
+    historical_present = get_stats_count(str(HISTORICAL_SEASON_START))
+    if historical_present == 0:
+        logger.info(f"No historical stats for {HISTORICAL_SEASON_START} — running historical scrape...")
+        try:
+            rows = run_historical_stats_scrape()
+            logger.info(f"Historical scrape complete: {rows} rows stored")
+        except Exception as e:
+            logger.error(f"Historical scrape failed: {e}")
+    else:
+        logger.info(f"Historical stats present ({historical_present} rows for {HISTORICAL_SEASON_START}) — skipping")
 
 threading.Thread(target=_startup_sequence, daemon=True).start()
 
