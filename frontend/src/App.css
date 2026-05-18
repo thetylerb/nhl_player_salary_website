@@ -356,14 +356,6 @@ body::before {
   overflow: hidden;
   box-shadow: 0 0 0 1px var(--line-2), 0 18px 36px -12px rgba(0,0,0,0.6);
 }
-.headshot::after {
-  content: '';
-  position: absolute; inset: 0;
-  background:
-    radial-gradient(40px 50px at 50% 38%, oklch(0.72 0.015 250), transparent 65%),
-    radial-gradient(110px 80px at 50% 100%, oklch(0.38 0.01 245), transparent 60%);
-  pointer-events: none;
-}
 .headshot-jersey {
   position: absolute;
   bottom: 0; left: 0; right: 0;
