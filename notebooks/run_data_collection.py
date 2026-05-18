@@ -13,7 +13,8 @@ CSV_PATH    = os.path.join(REPO_ROOT, 'backend', 'data', 'nhl_contracts.csv')
 HEADERS     = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 MP_BASE     = 'https://moneypuck.com/moneypuck/playerData/seasonSummary'
 SEASONS     = [str(y) for y in range(2019, 2025)]
-MIN_GP      = 40
+MIN_GP_SKATER = 40
+MIN_GP_GOALIE = 20   # goalies: median is 24 GP, 40 cuts 75% of them
 
 # MoneyPuck situation column values (NOT 'pp'/'sh')
 SIT_ALL  = 'all'
@@ -106,9 +107,16 @@ print(f'\nName lookup: {len(name_to_id):,} unique player names, {len(id_to_info)
 
 # ── 3. Match contracts to IDs ────────────────────────────────────────────────
 OVERRIDES = {
+    # Skaters
     'mats zuccarello aasen': 'mats zuccarello',
     'arseny gritsyuk':       'arseni gritsyuk',
     'anthony deangelo':      'anthony deangelo',
+    # Goalies — contracts CSV name -> MoneyPuck name
+    'phillip grubauer':      'philipp grubauer',
+    'samuel montembeault':   'sam montembeault',
+    'daniel vladar':         'dan vladar',
+    'cameron talbot':        'cam talbot',
+    'matthew murray':        'matt murray',
 }
 
 def match_player(name):
@@ -277,16 +285,21 @@ print(f'\nAfter join: {len(combined):,} rows')
 print(f'  Has stats: {combined["games_played"].notna().sum():,}')
 print(f'  No stats:  {combined["games_played"].isna().sum():,}')
 
-# ── 7. GP filter ─────────────────────────────────────────────────────────────
+# ── 7. GP filter (separate thresholds for skaters vs goalies) ────────────────
 has_stats = combined[combined['games_played'].notna()].copy()
 before_gp = len(has_stats)
-has_stats = has_stats[has_stats['games_played'] >= MIN_GP].copy()
+
+is_goalie_row = has_stats['is_goalie'].fillna(False)
+skater_pass = (~is_goalie_row) & (has_stats['games_played'] >= MIN_GP_SKATER)
+goalie_pass  = ( is_goalie_row) & (has_stats['games_played'] >= MIN_GP_GOALIE)
+has_stats = has_stats[skater_pass | goalie_pass].copy()
 after_gp  = len(has_stats)
 
-print(f'\nGP >= {MIN_GP} filter: {before_gp:,} -> {after_gp:,} (dropped {before_gp - after_gp:,})')
+print(f'\nGP filter: {before_gp:,} -> {after_gp:,} (dropped {before_gp - after_gp:,})')
+print(f'  Skaters: GP >= {MIN_GP_SKATER}')
+print(f'  Goalies: GP >= {MIN_GP_GOALIE}')
 print(f'FINAL TRAINING ROWS: {after_gp:,}')
 
-# Use 'position' from contracts (not the MoneyPuck copy)
 pos_col = 'position' if 'position' in has_stats.columns else 'position_mp'
 print('\nBy position:')
 print(has_stats[pos_col].value_counts())
