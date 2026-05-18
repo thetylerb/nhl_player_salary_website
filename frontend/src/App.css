@@ -1052,6 +1052,63 @@ table.comps tbody tr:last-child td { border-bottom: 0; }
 .footer a { color: var(--ink-3); text-decoration: none; }
 .footer a:hover { color: var(--ink); }
 
+/* ─── Contract aging chart ────────────────────────────────────────────────── */
+.aging-years {
+  display: flex;
+  gap: 6px;
+  margin-top: 16px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.aging-years::-webkit-scrollbar { display: none; }
+
+.aging-year-chip {
+  flex: 1;
+  min-width: 54px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.aging-yr-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.aging-yr-age {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  color: var(--ink-5);
+  margin-bottom: 3px;
+}
+.aging-yr-cap {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-2);
+  line-height: 1.1;
+}
+.aging-yr-caplabel {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  color: var(--ink-4);
+  margin-bottom: 4px;
+}
+.aging-yr-metric {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--ink-3);
+  border-top: 1px solid var(--line);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+
 /* ─── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .grid-mid { grid-template-columns: 1fr 1fr; }

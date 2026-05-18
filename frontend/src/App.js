@@ -3,6 +3,7 @@ import './App.css';
 import PlayerSearch from './components/PlayerSearch';
 import PlayerCard from './components/PlayerCard';
 import SalaryEstimate from './components/SalaryEstimate';
+import ContractAgingChart from './components/ContractAgingChart';
 import ComparablesTable from './components/ComparablesTable';
 import StatSliders from './components/StatSliders';
 import AdminPage from './components/AdminPage';
@@ -211,18 +212,14 @@ function MainApp() {
 
         {estimate && !loading && (
           <>
-            {/* Top grid: player card + comparables estimate */}
+            {/* Top grid: player card + contract aging chart */}
             <section className="grid-top">
               <PlayerCard
                 player={estimate.player}
                 salary={estimate.current_salary}
                 verdict={estimate.verdict}
               />
-              <SalaryEstimate
-                type="comparables"
-                result={estimate.comparables_estimate}
-                currentSalary={estimate.current_salary}
-              />
+              <ContractAgingChart data={estimate.contract_aging} />
             </section>
 
             {/* Mid grid: regression + cap context + sliders */}

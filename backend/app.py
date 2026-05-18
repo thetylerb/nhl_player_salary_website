@@ -230,6 +230,9 @@ def estimate():
             "based_on": "regression" if reg_result.get("estimate") else "comparables",
         }
 
+    from services.contract_aging import get_contract_aging
+    aging = get_contract_aging(player_id, info, current_salary)
+
     return jsonify({
         "player": {
             "nhl_id": player_id,
@@ -251,6 +254,7 @@ def estimate():
         "regression_estimate": reg_result,
         "verdict": verdict,
         "comparables": comp_result.get("comparables", []),
+        "contract_aging": aging,
     })
 
 

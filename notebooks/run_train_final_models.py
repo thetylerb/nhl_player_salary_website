@@ -103,7 +103,33 @@ for group, df, features, model in configs:
     print(f'[{group}] {algo} trained on {len(X)} samples, {len(feat_cols)} features -> saved')
 
 print(f'\nAll models saved to {MODELS_DIR}')
-print('Files:')
+
+# ── Age curves ────────────────────────────────────────────────────────────────
+# Compute median production metric by age from training data, saved as a JSON
+# lookup that the backend contract-aging service loads at runtime.
+# age_at_signing - 1 approximates the player's age during the stat season.
+
+age_curves = {}
+
+for pg, df_pg, metric_col in [
+    ('F', forwards, 'points_per60'),
+    ('D', defense,  'points_per60'),
+    ('G', goalies,  'save_pct'),
+]:
+    tmp = df_pg.copy()
+    tmp['stat_age'] = (tmp['age_at_signing'] - 1).round().astype(int)
+    tmp = tmp[(tmp['stat_age'] >= 18) & (tmp['stat_age'] <= 42)]
+    curve = tmp.groupby('stat_age')[metric_col].median()
+    age_curves[pg] = {str(int(a)): round(float(v), 4) for a, v in curve.items()}
+    print(f'[{pg}] age curve: {len(age_curves[pg])} age buckets '
+          f'(ages {min(int(k) for k in age_curves[pg])}–{max(int(k) for k in age_curves[pg])})')
+
+curves_path = os.path.join(MODELS_DIR, 'age_curves.json')
+with open(curves_path, 'w') as f:
+    json.dump(age_curves, f, indent=2)
+print(f'Saved age curves -> {curves_path}')
+
+print('\nFiles:')
 for f in sorted(os.listdir(MODELS_DIR)):
     path = os.path.join(MODELS_DIR, f)
     size = os.path.getsize(path)
