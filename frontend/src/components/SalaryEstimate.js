@@ -22,19 +22,40 @@ function confidenceLabel(level) {
   return level.charAt(0).toUpperCase() + level.slice(1);
 }
 
-// Density curve for comparables — rendered as a smooth bell-ish SVG
+// Density curve — true Gaussian sampled from estimate ± spread derived from low/high
 function DensityGraph({ estimate, current, low, high }) {
   if (!estimate) return null;
 
-  // Build axis tick labels
-  const minVal = Math.min(low || estimate * 0.7, current || estimate * 0.7) * 0.9;
-  const maxVal = Math.max(high || estimate * 1.3, current || estimate * 1.3) * 1.1;
+  const minVal = Math.min(low || estimate * 0.5, current || estimate * 0.5) * 0.85;
+  const maxVal = Math.max(high || estimate * 1.5, current || estimate * 1.5) * 1.15;
   const span = maxVal - minVal || 1;
 
   const xOf = (v) => Math.max(0, Math.min(400, ((v - minVal) / span) * 400));
 
   const curX = current ? xOf(current) : null;
   const estX = xOf(estimate);
+
+  // Derive sigma in pixel space from the 15th–85th percentile spread (≈ ±1.04σ)
+  const lowX = xOf(low || estimate * 0.7);
+  const highX = xOf(high || estimate * 1.3);
+  const sigmaX = Math.max((highX - lowX) / 2.08, 18);
+
+  // Sample the Gaussian at 100 points across the SVG width
+  const SAMPLES = 100;
+  const pts = [];
+  for (let i = 0; i <= SAMPLES; i++) {
+    const x = (i / SAMPLES) * 400;
+    const z = (x - estX) / sigmaX;
+    const yFrac = Math.exp(-0.5 * z * z);
+    const y = 150 - yFrac * 125;
+    pts.push([x, y]);
+  }
+
+  const linePts = pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const fillD =
+    `M ${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)} ` +
+    pts.slice(1).map(([x, y]) => `L ${x.toFixed(1)},${y.toFixed(1)}`).join(' ') +
+    ' L 400,155 L 0,155 Z';
 
   const ticks = [minVal, minVal + span * 0.25, minVal + span * 0.5, minVal + span * 0.75, maxVal];
 
@@ -46,20 +67,8 @@ function DensityGraph({ estimate, current, low, high }) {
           <line className="g-grid" x1="0" y1="85" x2="400" y2="85"/>
           <line className="g-grid" x1="0" y1="45" x2="400" y2="45"/>
 
-          {/* Bell curve roughly centered at estimate */}
-          <path className="g-curve-fill" d={`M0 155
-               C 30 153, 50 147, 70 137
-               C 90 122, 110 105, ${estX - 110} 75
-               C ${estX - 80} 40, ${estX - 40} 22, ${estX} 28
-               C ${estX + 40} 34, ${estX + 80} 65, ${estX + 110} 100
-               C ${estX + 140} 128, 380 150, 400 155
-               L 400 158 L 0 158 Z`}/>
-          <path className="g-curve-line" d={`M0 155
-               C 30 153, 50 147, 70 137
-               C 90 122, 110 105, ${estX - 110} 75
-               C ${estX - 80} 40, ${estX - 40} 22, ${estX} 28
-               C ${estX + 40} 34, ${estX + 80} 65, ${estX + 110} 100
-               C ${estX + 140} 128, 380 150, 400 155`}/>
+          <path className="g-curve-fill" d={fillD}/>
+          <polyline className="g-curve-line" points={linePts} fill="none"/>
 
           {curX !== null && (
             <>
