@@ -1,6 +1,8 @@
 """
-Comparables engine: find the N most similar players by stat profile,
-weight their salaries by inverse distance, return an estimate.
+Comparables engine: Gaussian kernel-weighted estimate over ALL same-position
+players with salary data.  The top-N most similar players are still returned
+for the display table, but the salary estimate uses the full position pool so
+a single outlier cannot skew the result.
 """
 
 import math
@@ -32,7 +34,6 @@ def _pos_group(position):
 
 
 def _estimate_signing_year(player):
-    """Return the season start year when the contract was signed."""
     expiry = player.get("expiry_season")
     years = player.get("contract_years")
     if expiry and years and int(years) > 0:
@@ -48,7 +49,6 @@ def _safe_float(val, default=0.0):
 
 
 def _compute_zscore_params(players, stat_keys):
-    """Compute mean and std for each stat across all players."""
     params = {}
     for key in stat_keys:
         vals = [_safe_float(p["stats"].get(key)) for p in players]
@@ -68,7 +68,6 @@ def _zscore(val, mean, std):
 
 
 def _weighted_distance(z_target, z_comp, weights, stat_keys):
-    """Weighted Euclidean distance between two z-score vectors."""
     total = 0.0
     for key in stat_keys:
         w = _safe_float(weights.get(key, 1.0))
@@ -81,12 +80,12 @@ def find_comparables(player_stats, weights=None, n=10,
                      position_filter=True, fa_status="auto",
                      season=None):
     """
-    Find N most comparable players for the given player_stats dict.
+    Kernel-weighted salary estimate over all same-position players.
 
-    player_stats must have keys: position, age, fa_type, stats (dict),
-    and optionally nhl_id (to exclude self from comparables).
-
-    Returns dict with estimate, low, high, confidence, and comparables list.
+    The bandwidth (sigma) is set to the distance to the n-th nearest neighbour
+    so it adapts automatically: tight when many similar players exist, wider
+    when the pool is sparse.  The top-n most similar players are returned for
+    the display table without change.
     """
     season = season or CURRENT_SEASON
     position = player_stats.get("position", "C")
@@ -97,29 +96,24 @@ def find_comparables(player_stats, weights=None, n=10,
     if weights is None:
         weights = {k: 1.0 for k in stat_keys}
 
-    # Load all players with salary + stats across all scraped seasons
     all_players = get_all_with_salary_historical() or get_all_with_salary(season)
     if not all_players:
         return _empty_result("No salary/stats data in database")
 
-    # Optionally restrict to same position group
     if position_filter:
         pool = [p for p in all_players if _pos_group(p.get("position", "")) == pg]
     else:
         pool = all_players
 
-    # Exclude the player themselves
     self_id = str(player_stats.get("nhl_id", ""))
     if self_id:
         pool = [p for p in pool if str(p["player_id"]) != self_id]
 
     if len(pool) < 3:
-        pool = all_players  # fall back to all positions
+        pool = all_players
 
-    # Compute z-score params from pool
     params = _compute_zscore_params(pool, stat_keys)
 
-    # Z-score target player
     target_stats = player_stats.get("stats", {})
     z_target = {}
     for key in stat_keys:
@@ -127,12 +121,11 @@ def find_comparables(player_stats, weights=None, n=10,
         mean, std = params[key]
         z_target[key] = _zscore(val, mean, std)
 
-    # FA status adjustment
     effective_fa = fa_status
     if fa_status == "auto":
         effective_fa = player_stats.get("fa_type", "UFA")
 
-    # Compute distances
+    # Compute distance from target to every player in the pool
     scored = []
     for comp in pool:
         comp_stats = comp.get("stats", {})
@@ -144,7 +137,6 @@ def find_comparables(player_stats, weights=None, n=10,
 
         dist = _weighted_distance(z_target, z_comp, weights, stat_keys)
 
-        # Minor FA status penalty if mismatch
         comp_fa = comp.get("fa_type", "UFA")
         if effective_fa != "auto" and comp_fa != effective_fa:
             dist *= 1.15
@@ -153,41 +145,70 @@ def find_comparables(player_stats, weights=None, n=10,
         scored.append((dist, similarity, comp))
 
     scored.sort(key=lambda x: x[0])
-    top_n = scored[:n]
 
-    if not top_n:
+    if not scored:
         return _empty_result("No comparable players found")
 
-    # Cap-normalize each comparable's AAV to cap% at signing, then weight-average
-    # and convert back to dollars at the current cap ceiling.
+    # Bandwidth = distance to the n-th nearest neighbour (adaptive)
+    n_ref = min(n, len(scored))
+    sigma = max(scored[n_ref - 1][0], 0.3)
+
+    # Gaussian kernel weights over the FULL pool
+    kernel_weights = [math.exp(-0.5 * (d / sigma) ** 2) for d, _, _ in scored]
+    total_kw = sum(kernel_weights)
+
+    if total_kw < 1e-9:
+        return _empty_result("No comparable players found")
+
+    # Estimate: kernel-weighted average of cap-normalised AAVs across full pool
     current_cap = get_current_cap_ceiling()
-    total_weight = sum(1.0 / (d + 1e-9) for d, _, _ in top_n)
     estimate_pct = sum(
-        (1.0 / (d + 1e-9)) / total_weight
+        kw / total_kw
         * (_safe_float(p["aav"]) / max(get_cap_ceiling(_estimate_signing_year(p)), 1))
-        for d, _, p in top_n
+        for kw, (_, _, p) in zip(kernel_weights, scored)
     )
     estimate = estimate_pct * current_cap
 
-    # Range expressed as current-cap-equivalent of min/max comparable cap%
-    cap_pcts = sorted(
-        _safe_float(p["aav"]) / max(get_cap_ceiling(_estimate_signing_year(p)), 1)
-        for _, _, p in top_n
+    # 15th / 85th percentile of kernel-weighted distribution → low / high
+    weighted_pairs = sorted(
+        [
+            (
+                _safe_float(p["aav"]) / max(get_cap_ceiling(_estimate_signing_year(p)), 1),
+                kw,
+            )
+            for kw, (_, _, p) in zip(kernel_weights, scored)
+        ],
+        key=lambda x: x[0],
     )
-    low = cap_pcts[0] * current_cap
-    high = cap_pcts[-1] * current_cap
+    cum = 0.0
+    low_pct = weighted_pairs[0][0]
+    high_pct = weighted_pairs[-1][0]
+    for pct, kw in weighted_pairs:
+        cum += kw / total_kw
+        if cum <= 0.15:
+            low_pct = pct
+        if cum <= 0.85:
+            high_pct = pct
+    low = low_pct * current_cap
+    high = high_pct * current_cap
 
+    # Effective N: how many players the kernel is really drawing from
+    effective_n = int(round(total_kw ** 2 / max(sum(kw ** 2 for kw in kernel_weights), 1e-9)))
+    pool_size = len(scored)
+
+    # Confidence based on effective N and similarity of the top-n
+    top_n = scored[:n]
     avg_sim = sum(sim for _, sim, _ in top_n) / len(top_n)
-    if avg_sim > 0.7 and len(top_n) >= 8:
+    if effective_n > 25 and avg_sim > 0.5:
         confidence = "high"
-    elif avg_sim > 0.5 and len(top_n) >= 5:
+    elif effective_n > 10 and avg_sim > 0.3:
         confidence = "medium"
     else:
         confidence = "low"
 
     comparables = []
     for dist, sim, p in top_n:
-        comp_entry = {
+        comparables.append({
             "player_id": p["player_id"],
             "name": p["player_name"],
             "team": p.get("team", ""),
@@ -196,15 +217,15 @@ def find_comparables(player_stats, weights=None, n=10,
             "fa_type": p.get("fa_type", ""),
             "similarity": round(sim, 3),
             "stats": p.get("stats", {}),
-        }
-        comparables.append(comp_entry)
+        })
 
     return {
         "estimate": round(estimate),
         "low": round(low),
         "high": round(high),
         "confidence": confidence,
-        "n_comparables": len(top_n),
+        "n_comparables": effective_n,
+        "pool_size": pool_size,
         "comparables": comparables,
     }
 
@@ -216,6 +237,7 @@ def _empty_result(reason=""):
         "high": None,
         "confidence": "low",
         "n_comparables": 0,
+        "pool_size": 0,
         "comparables": [],
         "error": reason,
     }

@@ -155,10 +155,11 @@ export default function SalaryEstimate({ type, result, currentSalary }) {
   const cardIndex = isComparables ? '02' : '03';
   const cardTitle = isComparables ? 'Comparables Engine' : 'Regression Model';
   const nComps = result.n_comparables;
+  const poolSize = result.pool_size;
   const algo = result.algo === 'GBR' ? 'GBR' : 'Ridge';
   const nSamples = result.n_samples;
   const tagText = isComparables
-    ? (nComps ? `${nComps} comps · KNN` : 'KNN')
+    ? (poolSize ? `${poolSize} players · kernel` : 'kernel')
     : (nSamples ? `${algo} · n=${nSamples}` : algo);
 
   const estimate = result.estimate;
@@ -168,11 +169,11 @@ export default function SalaryEstimate({ type, result, currentSalary }) {
   const rmseStr = rmse ? `± $${(rmse / 1_000_000).toFixed(1)}M` : null;
 
   const subText = isComparables
-    ? `Posterior distribution over ${nComps || '?'} weighted neighbors`
+    ? `Kernel-weighted estimate over ${poolSize || '?'} same-position players (eff. N=${nComps || '?'})`
     : (result.algo === 'GBR' ? `Gradient boosting · bootstrap resamples` : 'Ridge regression · bootstrap resamples');
 
   const footText = isComparables
-    ? `Based on ${nComps || '?'} similar players · weighted by selected stats`
+    ? `Full position pool · Gaussian kernel · bandwidth adaptive to top-${nComps || '?'}`
     : `${result.algo === 'GBR' ? 'Gradient boosting' : 'Ridge regression'} · trained 2013–2025`;
 
   if (result.error && !estimate) {
