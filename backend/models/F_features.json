@@ -1,0 +1,23 @@
+[
+  "age_at_signing",
+  "gp_pct",
+  "toi_per_game",
+  "goals_per60",
+  "primaryA_per60",
+  "points_per60",
+  "xG_per60",
+  "shots_per60",
+  "hdGoals_per60",
+  "ev_goals_per60",
+  "ev_xG_per60",
+  "ev_xGF_pct",
+  "ev_corsi_pct",
+  "pp_goals_per60",
+  "pp_xG_per60",
+  "pp_toi_share",
+  "faceoff_pct",
+  "ozone_start_pct",
+  "hits_per60",
+  "takeaways_per60",
+  "penDiff_per60"
+]

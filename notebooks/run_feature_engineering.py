@@ -33,8 +33,9 @@ print(df['aav_pct_cap'].describe().round(4))
 
 # ── 2. Per-60 rates ──────────────────────────────────────────────────────────
 def per60(count_col, ice_col, df):
+    # icetime is in seconds; convert to minutes then scale to per-60-minutes
     minutes = df[ice_col] / 60.0
-    return np.where(minutes > 0, df[count_col] / minutes, 0.0)
+    return np.where(minutes > 0, df[count_col] / minutes * 60.0, 0.0)
 
 df['goals_per60']       = per60('I_F_goals',           'icetime', df)
 df['primaryA_per60']    = per60('I_F_primaryAssists',  'icetime', df)
@@ -109,15 +110,15 @@ df['hd_save_pct'] = np.where(
 df['gsaa']      = np.where(df['xGoals'].notna(), df['xGoals'] - df['goals'], np.nan)
 df['gsaa_per60'] = np.where(
     df['icetime'].notna() & (df['icetime'] > 0) & df['gsaa'].notna(),
-    df['gsaa'] / (df['icetime'] / 60.0), np.nan
+    df['gsaa'] / (df['icetime'] / 60.0) * 60.0, np.nan
 )
 df['gaa'] = np.where(
     df['icetime'].notna() & (df['icetime'] > 0) & df['goals'].notna(),
-    df['goals'] / (df['icetime'] / 60.0), np.nan
+    df['goals'] / (df['icetime'] / 60.0) * 60.0, np.nan
 )
 df['sa_per60'] = np.where(
     df['icetime'].notna() & (df['icetime'] > 0) & df['ongoal'].notna(),
-    df['ongoal'] / (df['icetime'] / 60.0), np.nan
+    df['ongoal'] / (df['icetime'] / 60.0) * 60.0, np.nan
 )
 
 print('Goalie metrics created.')

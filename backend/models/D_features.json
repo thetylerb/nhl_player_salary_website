@@ -1,0 +1,21 @@
+[
+  "age_at_signing",
+  "gp_pct",
+  "toi_per_game",
+  "primaryA_per60",
+  "points_per60",
+  "xG_per60",
+  "ev_xG_per60",
+  "ev_xGF_pct",
+  "ev_corsi_pct",
+  "pp_primaryA_per60",
+  "pp_xG_per60",
+  "pp_toi_share",
+  "pk_toi_share",
+  "hits_per60",
+  "blocks_per60",
+  "takeaways_per60",
+  "giveaways_per60",
+  "ozone_start_pct",
+  "penDiff_per60"
+]

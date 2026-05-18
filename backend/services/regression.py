@@ -1,52 +1,60 @@
 """
-Regression model: train on salary + stats dataset, predict salary for a player.
-F: GradientBoostingRegressor (enough data to benefit from non-linearity).
-D/G: Ridge Regression (small datasets — Ridge generalizes; GBR just memorizes).
-Models are retrained each call if stale (or on first call).
+Regression model: loads pre-trained per-position-group models from backend/models/.
+
+Winners from 5-fold CV on 720 historical contracts (2019-2024):
+  Forwards   → GBR   R²=0.813  RMSE=$1.26M
+  Defensemen → Ridge R²=0.753  RMSE=$1.35M
+  Goalies    → Ridge R²=0.363  RMSE=$2.00M
+
+Feature extraction maps available DB stats to model features.
+Missing features (PP splits, EV splits) are filled with training-set medians.
 """
 
+import json
 import logging
+import os
 import math
-from datetime import datetime, timedelta
 
-from database.db import get_all_with_salary, get_all_with_salary_historical, get_cap_ceiling, get_current_cap_ceiling
-from config import CURRENT_SEASON
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# In-memory model cache: { position_group: { "model": ..., "trained_at": datetime } }
-_model_cache = {}
-MODEL_TTL_HOURS = 6
+MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
 
-# RMSE cache: { position_group: rmse_dollars } — populated on first predict per group
-_rmse_cache = {}
+# Reported RMSE from 5-fold CV (in dollars, at $88M cap)
+_CV_RMSE = {'F': 1_260_000, 'D': 1_350_000, 'G': 2_000_000}
 
-SKATER_FEATURES = [
-    # Production — raw and expected
-    "goals_per_60", "primary_points_per_60", "points_per_60", "ixg_per_60",
-    # Role / deployment
-    "toi_per_game", "zone_start_pct",
-    # On-ice possession
-    "corsi_for_pct", "xgf_pct", "on_ice_hd_cf_pct",
-    # Shot generation & physical
-    "shots_per_60", "hd_goals_per_60", "hits_per_60",
-    # Discipline
-    "penalty_diff_per_60",
-]
-GOALIE_FEATURES = [
-    "save_pct", "gaa", "quality_start_pct", "hd_save_pct", "gsaa", "games_started",
-]
-COMMON_FEATURES = ["age", "experience", "is_ufa"]
+# Model cache: loaded once on first use
+_loaded = {}
 
 POSITION_GROUPS = {
-    "C": "F", "L": "F", "LW": "F", "R": "F", "RW": "F", "W": "F", "F": "F",
-    "D": "D", "LD": "D", "RD": "D",
-    "G": "G",
+    'C': 'F', 'L': 'F', 'LW': 'F', 'R': 'F', 'RW': 'F', 'W': 'F', 'F': 'F',
+    'D': 'D', 'LD': 'D', 'RD': 'D',
+    'G': 'G',
+}
+
+# Maps notebook feature names → DB stat field names (where they differ)
+_STAT_ALIASES = {
+    'goals_per60'     : 'goals_per_60',
+    'primaryA_per60'  : 'primary_points_per_60',
+    'points_per60'    : 'points_per_60',
+    'xG_per60'        : 'ixg_per_60',
+    'shots_per60'     : 'shots_per_60',
+    'hdGoals_per60'   : 'hd_goals_per_60',
+    'hits_per60'      : 'hits_per_60',
+    'penDiff_per60'   : 'penalty_diff_per_60',
+    'ozone_start_pct' : 'zone_start_pct',
+    'ev_xGF_pct'      : 'xgf_pct',
+    'ev_corsi_pct'    : 'corsi_for_pct',
+    'gsaa'            : 'gsaa',
+    'gaa'             : 'gaa',
+    'save_pct'        : 'save_pct',
+    'hd_save_pct'     : 'hd_save_pct',
 }
 
 
 def _pos_group(position):
-    return POSITION_GROUPS.get(str(position).upper(), "F")
+    return POSITION_GROUPS.get(str(position).upper(), 'F')
 
 
 def _safe_float(val, default=0.0):
@@ -56,304 +64,139 @@ def _safe_float(val, default=0.0):
         return default
 
 
-def _feature_keys(pg):
-    if pg == "G":
-        return GOALIE_FEATURES + COMMON_FEATURES
-    return SKATER_FEATURES + COMMON_FEATURES
-
-
-def _extract_features(player, pg):
-    stats = player.get("stats", {}) if isinstance(player, dict) else {}
-    age = _safe_float(player.get("age", 28))
-    experience = _safe_float(player.get("experience", 5))
-    fa_type = player.get("fa_type", "UFA") or "UFA"
-    is_ufa = 1.0 if str(fa_type).upper() == "UFA" else 0.0
-
-    row = []
-    feat_keys = SKATER_FEATURES if pg != "G" else GOALIE_FEATURES
-    for key in feat_keys:
-        row.append(_safe_float(stats.get(key)))
-    row.extend([age, experience, is_ufa])
-    return row
-
-
-def _estimate_signing_year(player):
-    """Return the season start year when the contract was signed."""
-    expiry = player.get("expiry_season")
-    years = player.get("contract_years")
-    if expiry and years and int(years) > 0:
-        return int(expiry) - int(years)
-    return int(CURRENT_SEASON)
-
-
-def _build_training_data(pg, season):
-    # Use all historical seasons for more training data. Each (player, season)
-    # row is a separate sample: stats from that season paired with the player's
-    # AAV normalised by the cap ceiling for that same season.
-    all_rows = get_all_with_salary_historical()
-
-    # Fall back to current-season-only if historical pull is empty
-    if not all_rows:
-        all_rows = get_all_with_salary(season)
-
-    pool = [p for p in all_rows if _pos_group(p.get("position", "")) == pg]
-
-    X, y = [], []
-    seen = set()
-    for p in pool:
-        aav = _safe_float(p.get("aav"))
-        if aav <= 0:
-            continue
-        stat_season = int(p.get("season", season))
-        cap = get_cap_ceiling(stat_season)
-        if cap <= 0:
-            continue
-        cap_pct = aav / cap
-        feats = _extract_features(p, pg)
-        if any(math.isnan(f) or math.isinf(f) for f in feats):
-            continue
-        # Deduplicate identical (player, season) rows
-        key = (p.get("player_id"), stat_season)
-        if key in seen:
-            continue
-        seen.add(key)
-        X.append(feats)
-        y.append(cap_pct)
-    return X, y
-
-
-def _use_gbr(pg, n_samples):
-    """GBR only for forwards with enough data; Ridge for D/G always."""
-    return pg == "F" and n_samples >= 30
-
-
-def _train_model(pg, season):
+def _load_group(pg):
+    """Load model, feature list, and medians for a position group. Cached."""
+    if pg in _loaded:
+        return _loaded[pg]
     try:
-        from sklearn.ensemble import GradientBoostingRegressor
-        from sklearn.linear_model import Ridge
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.pipeline import Pipeline
-        import numpy as np
-
-        X, y = _build_training_data(pg, season)
-        min_samples = 5 if pg == "F" else 3
-        if len(X) < min_samples:
-            logger.warning(f"Not enough training data for {pg} model ({len(X)} samples)")
-            return None
-
-        X_arr = np.array(X, dtype=float)
-        y_arr = np.array(y, dtype=float)
-
-        if _use_gbr(pg, len(X)):
-            estimator = ("gbr", GradientBoostingRegressor(
-                n_estimators=150,
-                learning_rate=0.08,
-                max_depth=4,
-                subsample=0.85,
-                random_state=42,
-            ))
-        else:
-            estimator = ("ridge", Ridge(alpha=1.0))
-
-        model = Pipeline([("scaler", StandardScaler()), estimator])
-        model.fit(X_arr, y_arr)
-        algo = "GBR" if _use_gbr(pg, len(X)) else "Ridge"
-        logger.info(f"Trained {pg} model ({algo}) on {len(X)} samples")
-        return model
-    except ImportError:
-        logger.warning("scikit-learn not available, regression model disabled")
-        return None
+        import joblib
+        model = joblib.load(os.path.join(MODELS_DIR, f'{pg}_model.joblib'))
+        with open(os.path.join(MODELS_DIR, f'{pg}_features.json')) as f:
+            features = json.load(f)
+        with open(os.path.join(MODELS_DIR, f'{pg}_medians.json')) as f:
+            medians = json.load(f)
+        _loaded[pg] = (model, features, medians)
+        logger.info(f'Loaded pre-trained {pg} model ({len(features)} features)')
+        return _loaded[pg]
     except Exception as e:
-        logger.error(f"Training error for {pg}: {e}")
+        logger.warning(f'Could not load {pg} model: {e}')
         return None
 
 
-def _get_model(pg, season):
-    entry = _model_cache.get(pg)
-    if entry:
-        age = datetime.utcnow() - entry["trained_at"]
-        if age < timedelta(hours=MODEL_TTL_HOURS) and entry["model"] is not None:
-            return entry["model"]
+def _extract_features(player_stats, features, medians):
+    """
+    Build a feature vector mapping player_stats to model feature names.
+    Falls back to training-set median for any feature not directly available.
+    """
+    stats = player_stats.get('stats', {}) or {}
+    age   = _safe_float(player_stats.get('age', 28))
+    gp    = _safe_float(stats.get('games_played', 0))
+    toi   = _safe_float(stats.get('toi_per_game'))
 
-    model = _train_model(pg, season)
-    _model_cache[pg] = {"model": model, "trained_at": datetime.utcnow()}
-    return model
+    direct = {
+        'age_at_signing': age,
+        'gp_pct'        : min(gp / 82.0, 1.0) if gp > 0 else medians.get('gp_pct', 0.7),
+        'toi_per_game'  : toi if toi > 0 else medians.get('toi_per_game', 16.0),
+    }
+
+    # Map aliased stat fields
+    for feat, db_field in _STAT_ALIASES.items():
+        val = stats.get(db_field)
+        if val is not None:
+            direct[feat] = _safe_float(val)
+
+    # Direct name matches (future-proofing if DB gains more fields)
+    for feat in features:
+        if feat not in direct and feat in stats:
+            direct[feat] = _safe_float(stats[feat])
+
+    return [direct.get(feat, medians.get(feat, 0.0)) for feat in features]
 
 
 def predict_salary(player_stats, season=None):
     """
     Predict salary for a player given their stat dict.
-
-    player_stats must have: position, age, experience, fa_type, stats (dict)
-
-    Returns dict with estimate, low, high, confidence.
+    player_stats must include: position, age, stats (dict of MoneyPuck fields).
+    Returns dict with estimate, low, high, confidence, rmse_dollars, algo.
     """
-    season = season or CURRENT_SEASON
-    position = player_stats.get("position", "C")
+    from database.db import get_current_cap_ceiling
+
+    position = player_stats.get('position', 'C')
     pg = _pos_group(position)
 
-    model = _get_model(pg, season)
-    if model is None:
-        return {
-            "estimate": None, "low": None, "high": None,
-            "confidence": "low",
-            "error": "Model not available (insufficient data or sklearn missing)",
-        }
+    loaded = _load_group(pg)
+    if loaded is None:
+        return _fallback_error(pg, 'Pre-trained model not available')
+
+    model, features, medians = loaded
 
     try:
-        import numpy as np
+        row = _extract_features(player_stats, features, medians)
+        X   = np.array([row], dtype=float)
+
+        if any(math.isnan(v) or math.isinf(v) for v in row):
+            return _fallback_error(pg, 'Invalid feature values')
 
         current_cap = get_current_cap_ceiling()
-        feats = _extract_features(player_stats, pg)
-        X = np.array([feats], dtype=float)
-        pred_pct = float(model.predict(X)[0])
-        pred = pred_pct * current_cap
+        pred_pct    = float(model.predict(X)[0])
+        estimate    = pred_pct * current_cap
 
-        n = len(_build_training_data(pg, season)[0])
+        rmse = _CV_RMSE.get(pg, 1_500_000)
+        low  = max(estimate - rmse, 750_000)
+        high = estimate + rmse
 
-        is_gbr = "gbr" in model.named_steps
-        if is_gbr:
-            # Bootstrap confidence interval via staged predictions
-            n_est = len(model.named_steps["gbr"].estimators_)
-            partial_preds = []
-            step = max(1, n_est // 20)
-            for i in range(step, n_est + 1, step):
-                partial_pct = _partial_predict(model, X, i)
-                if partial_pct is not None:
-                    partial_preds.append(partial_pct * current_cap)
+        # Confidence: how many features came from live DB stats vs medians
+        stats = player_stats.get('stats', {}) or {}
+        n_direct = sum(
+            1 for feat in features
+            if feat in ('age_at_signing', 'gp_pct', 'toi_per_game')
+            or _STAT_ALIASES.get(feat) in stats
+            or feat in stats
+        )
+        coverage = n_direct / max(len(features), 1)
+        confidence = 'high' if coverage >= 0.7 else ('medium' if coverage >= 0.4 else 'low')
 
-            if len(partial_preds) >= 3:
-                arr = sorted(partial_preds)
-                lo_idx = max(0, int(len(arr) * 0.1))
-                hi_idx = min(len(arr) - 1, int(len(arr) * 0.9))
-                low = arr[lo_idx]
-                high = arr[hi_idx]
-            else:
-                low, high = pred * 0.85, pred * 1.15
-        else:
-            # Ridge: sample-count-based spread (wider when fewer samples)
-            spread = 0.20 if n < 10 else (0.15 if n < 25 else 0.10)
-            low, high = pred * (1 - spread), pred * (1 + spread)
+        algo = 'GBR' if pg == 'F' else 'Ridge'
 
-        if n >= 20:
-            confidence = "high"
-        elif n >= 8:
-            confidence = "medium"
-        else:
-            confidence = "low"
-
-        rmse = _get_rmse(pg, season)
         return {
-            "estimate": round(max(pred, 750000)),
-            "low": round(max(low, 750000)),
-            "high": round(max(high, 750000)),
-            "confidence": confidence,
-            "rmse_dollars": rmse,
-            "algo": "GBR" if is_gbr else "Ridge",
-            "position_group": pg,
-            "n_samples": n,
+            'estimate'      : round(max(estimate, 750_000)),
+            'low'           : round(low),
+            'high'          : round(high),
+            'confidence'    : confidence,
+            'rmse_dollars'  : rmse,
+            'algo'          : algo,
+            'position_group': pg,
+            'n_samples'     : {'F': 381, 'D': 197, 'G': 63}[pg],
         }
+
     except Exception as e:
-        logger.error(f"Prediction error: {e}")
-        return {
-            "estimate": None, "low": None, "high": None,
-            "confidence": "low", "error": str(e),
-        }
+        logger.error(f'Prediction error for {pg}: {e}')
+        return _fallback_error(pg, str(e))
 
 
-def _partial_predict(pipeline, X, n_estimators):
-    """Predict using only the first n_estimators trees."""
-    try:
-        import numpy as np
-        from sklearn.ensemble._gb import BaseGradientBoosting
-
-        scaler = pipeline.named_steps["scaler"]
-        gbr = pipeline.named_steps["gbr"]
-        X_scaled = scaler.transform(X)
-
-        init_pred = gbr._raw_predict_init(X_scaled)
-        pred = init_pred.copy()
-        lr = gbr.learning_rate
-
-        for i, stage in enumerate(gbr.estimators_):
-            if i >= n_estimators:
-                break
-            for k, tree in enumerate(stage):
-                pred[:, k] += lr * tree.predict(X_scaled)
-
-        return float(pred[0, 0])
-    except Exception:
-        return None
-
-
-def cross_validate_model(pg, season=None):
-    """
-    Run 5-fold cross-validation on the position group model.
-    Returns dict with r2, rmse_dollars, n_samples — or None if insufficient data.
-    """
-    season = season or CURRENT_SEASON
-    try:
-        from sklearn.model_selection import KFold, cross_val_score
-        from sklearn.ensemble import GradientBoostingRegressor
-        from sklearn.linear_model import Ridge
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.pipeline import Pipeline
-        import numpy as np
-
-        X, y = _build_training_data(pg, season)
-        n = len(X)
-        min_samples = 5 if pg == "F" else 3
-        if n < min_samples:
-            return {"r2": None, "rmse_dollars": None, "n_samples": n, "error": "too few samples"}
-
-        X_arr = np.array(X, dtype=float)
-        y_arr = np.array(y, dtype=float)
-
-        if _use_gbr(pg, n):
-            estimator = ("gbr", GradientBoostingRegressor(
-                n_estimators=150, learning_rate=0.08,
-                max_depth=4, subsample=0.85, random_state=42,
-            ))
-        else:
-            estimator = ("ridge", Ridge(alpha=1.0))
-
-        pipeline = Pipeline([("scaler", StandardScaler()), estimator])
-        current_cap = get_current_cap_ceiling()
-
-        n_splits = min(5, n)
-        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-
-        r2_scores = cross_val_score(pipeline, X_arr, y_arr, cv=kf, scoring="r2")
-        neg_rmse = cross_val_score(pipeline, X_arr, y_arr, cv=kf,
-                                   scoring="neg_root_mean_squared_error")
-
-        rmse_pct = float(-neg_rmse.mean())
-        rmse_dollars = round(rmse_pct * current_cap)
-
-        return {
-            "n_samples": n,
-            "n_folds": n_splits,
-            "algo": "GBR" if _use_gbr(pg, n) else "Ridge",
-            "r2_mean": round(float(r2_scores.mean()), 3),
-            "r2_std": round(float(r2_scores.std()), 3),
-            "rmse_dollars": rmse_dollars,
-        }
-    except ImportError:
-        return {"error": "scikit-learn not available"}
-    except Exception as e:
-        logger.error(f"CV error for {pg}: {e}")
-        return {"error": str(e)}
+def _fallback_error(pg, msg):
+    return {
+        'estimate'  : None,
+        'low'       : None,
+        'high'      : None,
+        'confidence': 'low',
+        'error'     : msg,
+        'algo'      : 'GBR' if pg == 'F' else 'Ridge',
+    }
 
 
 def invalidate_models():
-    """Force model retraining on next prediction call."""
-    _model_cache.clear()
-    _rmse_cache.clear()
+    """Force model reload on next prediction call."""
+    _loaded.clear()
 
 
-def _get_rmse(pg, season):
-    """Return RMSE in dollars for a position group, running CV once and caching."""
-    if pg not in _rmse_cache:
-        result = cross_validate_model(pg, season)
-        _rmse_cache[pg] = result.get("rmse_dollars")
-    return _rmse_cache.get(pg)
+def cross_validate_model(pg, season=None):
+    """Return pre-computed CV metrics (used by the /estimate API endpoint)."""
+    pg = _pos_group(pg) if len(pg) > 1 else pg
+    return {
+        'n_samples'   : {'F': 381, 'D': 197, 'G': 63}.get(pg),
+        'n_folds'     : 5,
+        'algo'        : 'GBR' if pg == 'F' else 'Ridge',
+        'r2_mean'     : {'F': 0.813, 'D': 0.753, 'G': 0.363}.get(pg),
+        'rmse_dollars': _CV_RMSE.get(pg),
+    }
