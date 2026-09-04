@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// Same-origin by default: the built frontend is served by the same Flask app
+// that serves /api/*, so an unset/blank REACT_APP_API_URL resolves to a
+// relative path instead of a hardcoded host.
+const BASE = process.env.REACT_APP_API_URL || '';
 
 const api = axios.create({ baseURL: BASE, timeout: 30000 });
 

@@ -1,0 +1,31 @@
+.git
+.claude
+.dockerignore
+Dockerfile
+README.md
+notebooks/
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+venv/
+.venv/
+env/
+ENV/
+
+# Node
+frontend/node_modules/
+frontend/build/
+frontend/frontend.log
+frontend/.env
+frontend/.env.local
+
+# Backend runtime artifacts (rebuilt on container start, not needed in the image)
+backend/salary_cache.db
+backend/backend.log
+
+# Secrets
+.env
+.env.local
+.env.*.local

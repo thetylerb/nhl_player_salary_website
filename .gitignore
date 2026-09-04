@@ -43,6 +43,10 @@ frontend/build/
 frontend/frontend.log
 node_modules/
 
+# Frontend build output copied here for local Docker-parity smoke tests
+# (the Dockerfile copies it fresh into the image at build time)
+backend/frontend_build/
+
 # OS
 .DS_Store
 Thumbs.db

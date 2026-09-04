@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 # Ensure backend root is on path
@@ -25,7 +25,12 @@ from services.csv_importer import import_contracts_from_stream, import_contracts
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+# static_folder=None: CRA's build output has its own static/ subdirectory
+# (build/static/js, build/static/css) served through the catch-all route
+# below. Flask's default static_folder would otherwise register /static/*
+# pointing at a nonexistent backend/static/ dir and 404 before the catch-all
+# ever runs.
+app = Flask(__name__, static_folder=None)
 CORS(app, origins=[
     FRONTEND_URL,
     "https://nhl-player-salary-website.vercel.app",
@@ -377,6 +382,47 @@ def debug_search():
     raw = search_player_index(q, 5)
     via_func = search_players(q)
     return jsonify({"index_count": index_count, "raw_index": raw, "search_players": via_func})
+
+
+# ─── Frontend (served from the same origin as the API) ───────────────────────
+# The built React app calls relative paths (e.g. /api/players/search), so
+# serving it from this same Flask app means there is no cross-origin request
+# ever made in production: no CORS config to get right, and no build-time
+# API URL that can silently point at the wrong host. One process, one URL.
+
+FRONTEND_BUILD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend_build")
+
+if not os.path.isdir(FRONTEND_BUILD_DIR):
+    logger.warning(
+        f"Frontend build not found at {FRONTEND_BUILD_DIR} — "
+        "serving API only. Run `npm run build` in frontend/ and copy the "
+        "output here (the Dockerfile does this automatically) to serve the UI."
+    )
+else:
+    @app.route("/")
+    def serve_frontend_index():
+        return send_from_directory(FRONTEND_BUILD_DIR, "index.html")
+
+    @app.route("/<path:path>")
+    def serve_frontend_catchall(path):
+        # Never shadow the API — this route is registered last and Flask
+        # matches /api/* to the routes above first, but guard explicitly too
+        # since another route could be added later without noticing this one.
+        if path.startswith("api/"):
+            return jsonify({"error": "Not found"}), 404
+
+        # Resolve against the real filesystem path and confirm it is still
+        # inside FRONTEND_BUILD_DIR before serving, so a request like
+        # /../../etc/passwd can't escape the build directory.
+        build_root = os.path.realpath(FRONTEND_BUILD_DIR)
+        requested = os.path.realpath(os.path.join(build_root, path))
+        if os.path.commonpath([build_root, requested]) == build_root and os.path.isfile(requested):
+            return send_from_directory(FRONTEND_BUILD_DIR, path)
+
+        # Unknown path (or an escape attempt): hand back index.html so
+        # client-side routes and deep links still render the app shell.
+        return send_from_directory(FRONTEND_BUILD_DIR, "index.html")
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=False)
